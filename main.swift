@@ -2970,6 +2970,10 @@ func noiseTest() {
 let args = CommandLine.arguments
 func argValue(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
 if args.contains("--noise-test") { noiseTest(); exit(0) }
+if let p = argValue("--video") {
+    do { try VideoRenderer().render(to: p) } catch { print("video failed: \(error)"); exit(1) }
+    exit(0)
+}
 if args.contains("--slide-stats") { slideStats(); exit(0) }
 if args.contains("--bright-curve") { brightCurve(); exit(0) }
 if let p = argValue("--live-demo") { liveDemo(p, kind: Int(argValue("--kind") ?? "5") ?? 5); exit(0) }
