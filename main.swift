@@ -548,21 +548,23 @@ struct GrainProfile {
 
     static func forKind(_ k: Int) -> GrainProfile? {
         switch k {
-        case 5: return GrainProfile(rate: (6500, 2600), spread: (1.8, 1.4), tickMs: (0.9, 0.25), hissF: (1400, 6500), hissQ: (0.5, 0.8),
-                                    airF: (3600, 13000), click: (0.05, 0.6), clickF: 8000, body: (0.45, 0), bodyF: 300, flicker: 0.18, room: 0.22,
-                                    level: [0.415, 0.341, 0.322, 0.354, 0.434])
-        // Close-up: finer grains heard from nearby, so more fine detail and a crisper glass phase.
-        case 6: return GrainProfile(rate: (7500, 3200), spread: (1.7, 1.4), tickMs: (0.6, 0.18), hissF: (2200, 7200), hissQ: (0.55, 0.8),
-                                    airF: (6000, 15000), click: (0.03, 0.5), clickF: 9000, body: (0.2, 0), bodyF: 350, flicker: 0.22, room: 0.12,
-                                    level: [0.386, 0.353, 0.348, 0.382, 0.454])
-        // Grains on glass: steady, bright and delicate.
-        case 7: return GrainProfile(rate: (2600, 2600), spread: (1.6, 1.6), tickMs: (0.3, 0.3), hissF: (6800, 6800), hissQ: (0.85, 0.85),
-                                    airF: (15000, 15000), click: (0.6, 0.6), clickF: 9500, body: (0, 0), bodyF: 400, flicker: 0.3, room: 0.3,
-                                    level: [0.382, 0.382, 0.382, 0.382, 0.382], fixed: 1)
-        // Big: coarser grains and thicker glass, so a deeper, grainier pour.
-        case 8: return GrainProfile(rate: (3000, 1800), spread: (2.0, 1.6), tickMs: (1.5, 0.45), hissF: (850, 3400), hissQ: (0.5, 0.75),
-                                    airF: (2500, 8000), click: (0.04, 0.5), clickF: 5500, body: (0.6, 0.1), bodyF: 200, flicker: 0.25, room: 0.28,
-                                    level: [0.657, 0.536, 0.5, 0.515, 0.584])
+        // Matched to a recording of a real hourglass: a very smooth hiss whose energy rises from
+        // 3 kHz to 10 kHz, over a deep, warm low bed. Bare glass is only a little brighter than sand.
+        case 5: return GrainProfile(rate: (22000, 16000), spread: (1.0, 1.0), tickMs: (0.5, 0.35), hissF: (9000, 9800), hissQ: (0.6, 0.6),
+                                    airF: (12500, 13000), click: (0, 0.12), clickF: 9500, body: (3.6, 2.4), bodyF: 140, flicker: 0.1, room: 0.15,
+                                    level: [0.057, 0.0604, 0.0652, 0.0727, 0.0823])
+        // Close-up: finer, brighter, with less of the low bed.
+        case 6: return GrainProfile(rate: (24000, 18000), spread: (1.0, 1.0), tickMs: (0.4, 0.3), hissF: (9200, 10000), hissQ: (0.6, 0.6),
+                                    airF: (13000, 13500), click: (0, 0.12), clickF: 9800, body: (2.0, 1.3), bodyF: 140, flicker: 0.12, room: 0.1,
+                                    level: [0.0805, 0.0817, 0.0842, 0.0883, 0.0949])
+        // Grains on glass: steady and bright.
+        case 7: return GrainProfile(rate: (18000, 18000), spread: (1.0, 1.0), tickMs: (0.3, 0.3), hissF: (9500, 9500), hissQ: (0.6, 0.6),
+                                    airF: (13000, 13000), click: (0.15, 0.15), clickF: 9800, body: (1.6, 1.6), bodyF: 140, flicker: 0.12, room: 0.15,
+                                    level: [0.0914, 0.0914, 0.0914, 0.0914, 0.0914], fixed: 1)
+        // Big: a deeper pour with more of the low bed.
+        case 8: return GrainProfile(rate: (20000, 14000), spread: (1.1, 1.0), tickMs: (0.7, 0.45), hissF: (7000, 8500), hissQ: (0.55, 0.55),
+                                    airF: (10500, 11500), click: (0, 0.1), clickF: 8000, body: (4.2, 2.8), bodyF: 130, flicker: 0.12, room: 0.2,
+                                    level: [0.046, 0.0496, 0.0555, 0.0635, 0.0747])
         default: return nil
         }
     }
@@ -575,7 +577,7 @@ final class NoiseState {
                         "Lava Lamp · warm hum", "Water Clock · follows the drops", "Cave Drips · echoing",
                         "Candle Flame · soft flutter", "Winter Hush · soft wind", "Zen Garden · stream and tock",
                         "Gentle Rain · soft patter", "Fireplace · soft crackle"]
-    static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.83, 0.57, 0.36, 0.40, 0.42, 0.405, 0.61]
+    static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.83, 0.85, 0.36, 0.40, 0.57, 0.405, 0.61]
     static let liveKinds: Set<Int> = [5, 6, 8]
     static let hourglassKinds = [5, 6, 7, 8]
     static let ambientKinds = [1, 2, 3, 4, 15, 16]

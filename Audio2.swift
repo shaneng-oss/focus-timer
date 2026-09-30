@@ -53,6 +53,90 @@ final class ExtraSynth {
     var room: Float = 0.15
     var wet: Float = 0
 
+    // Recorded drips (Resources/drip*.wav, if present): played back for the water clock instead of synthesis.
+    var samples: [[Float]] = ExtraSynth.loadDrips()
+    struct SamplePlay { var idx: Int; var pos: Float; var rate: Float; var gain: Float; var gl: Float; var gr: Float }
+    var plays: [SamplePlay] = []
+    var lastSample = -1
+
+    static func loadDrips() -> [[Float]] {
+        var dirs: [URL] = []
+        if let r = Bundle.main.resourceURL { dirs.append(r) }
+        let exe = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
+        dirs.append(exe.appendingPathComponent("Resources"))
+        dirs.append(exe)
+        var out: [[Float]] = []
+        for d in dirs {
+            for i in 0..<16 {
+                let u = d.appendingPathComponent("drip\(i).wav")
+                if let s = ExtraSynth.readWav(u) { out.append(s) }
+            }
+            if !out.isEmpty { break }
+        }
+        return out
+    }
+
+    /// Minimal WAV reader: 16-bit PCM, mono or stereo, 44.1 kHz.
+    static func readWav(_ url: URL) -> [Float]? {
+        guard let d = try? Data(contentsOf: url), d.count > 44 else { return nil }
+        var pos = 12
+        var channels = 1, bits = 16, rate = 44100
+        var pcm: Data?
+        while pos + 8 <= d.count {
+            let id = String(data: d[pos..<pos + 4], encoding: .ascii) ?? ""
+            let size = Int(d[pos + 4]) | Int(d[pos + 5]) << 8 | Int(d[pos + 6]) << 16 | Int(d[pos + 7]) << 24
+            let body = pos + 8
+            if id == "fmt " && body + 16 <= d.count {
+                channels = Int(d[body + 2]) | Int(d[body + 3]) << 8
+                rate = Int(d[body + 4]) | Int(d[body + 5]) << 8 | Int(d[body + 6]) << 16 | Int(d[body + 7]) << 24
+                bits = Int(d[body + 14]) | Int(d[body + 15]) << 8
+            } else if id == "data" {
+                pcm = d[body..<min(d.count, body + size)]
+                break
+            }
+            pos = body + size + (size & 1)
+        }
+        guard let p = pcm, bits == 16, rate == 44100, channels >= 1 else { return nil }
+        let n = p.count / (2 * channels)
+        var out = [Float](repeating: 0, count: n)
+        p.withUnsafeBytes { raw in
+            let s = raw.bindMemory(to: Int16.self)
+            for i in 0..<n {
+                var v: Float = 0
+                for c in 0..<channels { v += Float(Int16(littleEndian: s[i * channels + c])) }
+                out[i] = v / (32768 * Float(channels))
+            }
+        }
+        return out
+    }
+
+    func triggerSample(gain: Float, pan: Float, rate: Float) {
+        guard !samples.isEmpty else { return }
+        var idx = Int(rng.next() % UInt64(samples.count))
+        if samples.count > 1 && idx == lastSample { idx = (idx + 1) % samples.count }
+        lastSample = idx
+        let a = (pan + 1) * Float.pi / 4
+        if plays.count >= 8 { plays.removeFirst() }
+        plays.append(SamplePlay(idx: idx, pos: 0, rate: rate, gain: gain, gl: cosf(a), gr: sinf(a)))
+    }
+
+    @inline(__always) private func samplesMix() -> (Float, Float) {
+        var l: Float = 0, r: Float = 0
+        var i = 0
+        while i < plays.count {
+            let p = plays[i]
+            let s = samples[p.idx]
+            let k = Int(p.pos)
+            if k + 1 >= s.count { plays.remove(at: i); continue }
+            let t = p.pos - Float(k)
+            let v = (s[k] * (1 - t) + s[k + 1] * t) * p.gain
+            l += v * p.gl; r += v * p.gr
+            plays[i].pos += p.rate
+            i += 1
+        }
+        return (l, r)
+    }
+
     @inline(__always) func unit() -> Float { Float(rng.next() >> 40) / 16_777_216 }
     @inline(__always) func white() -> Float { unit() * 2 - 1 }
     @inline(__always) func pink(_ w: Float) -> Float {
@@ -126,8 +210,13 @@ final class ExtraSynth {
 
     func handle(_ e: SoundEvent) {
         switch (kind, e.kind) {
-        case (10, .drop):
-            plink(depth: e.a, size: max(0.3, e.b), pan: unit() * 0.5 - 0.25)
+        case (10, .drop), (11, .drop):
+            if samples.isEmpty {
+                plink(depth: e.a, size: max(0.3, e.b), pan: unit() * 0.5 - 0.25)
+            } else {
+                // The recording itself, with a little variation and a touch lower as the water deepens
+                triggerSample(gain: 0.75 * (0.7 + 0.3 * max(0.3, e.b)), pan: unit() * 0.5 - 0.25, rate: (0.97 + 0.06 * unit()) * (1 - 0.05 * e.a))
+            }
         case (12, .light):
             fire(2, tau: 0.22, amp: 0.55, attack: 0.04, filtF: 380, filtQ: 0.8)
         case (12, .extinguish):
@@ -220,7 +309,11 @@ final class ExtraSynth {
         case 11:
             nextDrip -= inv
             if nextDrip <= 0 {
-                plink(depth: 0.3 + 0.55 * unit(), size: 0.7 + 0.5 * unit(), pan: unit() * 1.2 - 0.6)
+                if samples.isEmpty {
+                    plink(depth: 0.3 + 0.55 * unit(), size: 0.7 + 0.5 * unit(), pan: unit() * 1.2 - 0.6)
+                } else {
+                    triggerSample(gain: 0.7 * (0.6 + 0.4 * unit()), pan: unit() * 1.2 - 0.6, rate: 0.94 + 0.1 * unit())
+                }
                 let u = unit()
                 nextDrip = 0.35 + 3.2 * u * u
             }
@@ -254,20 +347,20 @@ final class ExtraSynth {
             // 2.5 kHz with a slow gurgle, bubbles low in the range, and a little rumble underneath.
             let fl = sFlow
             let gur = 1 + 0.22 * sinf(2 * Float.pi * 2.3 * t + slow * 6) + 0.14 * sinf(2 * Float.pi * 5.5 * t + slow2 * 4)
-            if fl > 0.01 && unit() < 120 * fl * inv {
-                let f0 = 500 * powf(2, unit() * 1.8), u = unit()
-                fire(0, f0: f0, f1: f0 * 1.15, chirpTau: 0.01, tau: 0.004 + 0.006 * unit(), amp: 0.3 * u * u * gur, attack: 0.0008, pan: -0.35)
+            // Water only: a steady patter of small drops and bubbles landing in the basin, no hiss.
+            if fl > 0.01 && unit() < 45 * fl * inv {
+                let f0 = 420 * powf(2, unit() * 1.6), u = unit()
+                fire(0, f0: f0, f1: f0 * 1.12, chirpTau: 0.012, tau: 0.008 + 0.014 * unit(), amp: 0.42 * (0.3 + 0.7 * u * u) * gur, attack: 0.001, pan: -0.35 + 0.3 * unit())
+                fire(2, tau: 0.006, amp: 0.12 * u, attack: 0.0005, filtF: 700, filtQ: 0.8, pan: -0.3)
             }
             if counter & 63 == 0 { tubeBP.set(280 + 520 * sFill, 3, sr) }
             let vs = (vl + vr) * 0.5
             let res = tubeBP.tick(vs).bp * 0.4 * fl
             vl += res * 0.6; vr += res * 0.4
-            let water = rainBP.tick(pink(w)).bp * 1.1 * gur + hissBP.tick(w).bp * 0.22 * gur + lowLP.tick(brownStep()).lp * 0.32
-            mono = water * fl
+            mono = 0
             if pourT >= 0 {
                 pourT += inv
                 let e = min(1, pourT / 0.12) * (pourT < pourLen - 0.3 ? 1 : max(0, (pourLen - pourT) / 0.3))
-                mono += pourBP.tick(w).bp * 0.5 * e * gur
                 if unit() < 200 * inv {
                     let f0 = 600 * powf(2, unit() * 1.6), u = unit()
                     fire(0, f0: f0, f1: f0 * 1.2, chirpTau: 0.01, tau: 0.008 + 0.01 * unit(), amp: 0.35 * u * u * e, attack: 0.001, pan: -0.3)
@@ -304,6 +397,8 @@ final class ExtraSynth {
         default:
             mono = 0
         }
+        let (sl, sr2) = samplesMix()
+        vl += sl; vr += sr2
         let dry = mono + (vl + vr) * 0.5
         tap[tapPos] = dry
         var l = mono + vl + (tap[(tapPos - 613) & 4095] + 0.5 * tap[(tapPos - 1571) & 4095]) * room

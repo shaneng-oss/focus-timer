@@ -6,6 +6,8 @@ swiftc -O -enforce-exclusivity=unchecked -swift-version 5 -target arm64-apple-ma
 APP="build/Focus Timer.app"
 rm -rf build && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp SandTimer "$APP/Contents/MacOS/SandTimer"
+# Optional recorded sounds (kept out of the repository)
+ls Resources/*.wav >/dev/null 2>&1 && cp Resources/*.wav "$APP/Contents/Resources/"
 # App icon rendered by the app itself
 ./SandTimer --snapshot build/icon.png --progress 0.38 --icon
 ICONSET=build/AppIcon.iconset && mkdir -p $ICONSET
