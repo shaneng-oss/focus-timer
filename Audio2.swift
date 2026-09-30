@@ -113,23 +113,15 @@ final class ExtraSynth {
         voices[idx] = v
     }
 
-    /// One drip landing in water: a glass tick when the basin is bare, the air bubble's rising chirp,
-    /// a splash, and a low thump whose pitch rises as the basin fills.
+    /// One drip landing in water: a soft splash, the air bubble's note low in the range, and a
+    /// gentle body that rises a little as the water deepens. No glass impact.
     func plink(depth d: Float, size s: Float, pan: Float) {
-        let g = powf(max(0, 1 - d), 1.5)
-        if g > 0.02 {
-            fire(0, f0: 4300 * (0.92 + 0.16 * unit()), tau: 0.009, amp: 0.45 * g * s, attack: 0.0004, pan: pan)
-            fire(0, f0: 6400 * (0.95 + 0.1 * unit()), tau: 0.006, amp: 0.25 * g * s, attack: 0.0004, pan: pan)
-            fire(1, tau: 0.003, amp: 0.7 * g * s, attack: 0.0003, filtF: 6500, filtQ: 0.7, pan: pan)
-        }
-        let b = min(1, 0.15 + 2.5 * d) * s
-        let f0 = 1800 * powf(2, unit() * 1.3)
-        fire(0, f0: f0, f1: f0 * 1.35, chirpTau: 0.02, tau: 0.03 + 0.035 * unit(), amp: 0.55 * b, attack: 0.002, pan: pan)
-        if d > 0.03 { fire(1, tau: 0.02 + 0.02 * s, amp: 0.35 * s * min(1, d * 4), attack: 0.001, filtF: 3800, filtQ: 0.8, pan: pan) }
-        if d > 0.04 {
-            let fb = 150 + 320 * powf(d, 1.3)
-            fire(0, f0: fb, f1: fb * 0.97, chirpTau: 0.05, tau: 0.11, amp: 0.35 * powf(d, 0.7) * s, attack: 0.004, pan: pan)
-        }
+        let f0 = 650 * powf(2, unit() * 1.2)
+        fire(0, f0: f0, f1: f0 * 1.25, chirpTau: 0.025, tau: 0.045 + 0.04 * unit(), amp: 0.5 * s, attack: 0.003, pan: pan)
+        fire(1, tau: 0.02 + 0.015 * s, amp: 0.3 * s, attack: 0.0015, filtF: 2000, filtQ: 0.7, pan: pan)
+        let fb = 140 + 220 * powf(max(d, 0.05), 1.2)
+        fire(0, f0: fb, f1: fb * 0.96, chirpTau: 0.05, tau: 0.12, amp: 0.35 * s, attack: 0.004, pan: pan)
+        fire(2, tau: 0.03, amp: 0.25 * s, attack: 0.002, filtF: 500, filtQ: 0.8, pan: pan)
     }
 
     func handle(_ e: SoundEvent) {
