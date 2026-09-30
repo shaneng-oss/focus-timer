@@ -83,7 +83,7 @@ final class ExtraSynth {
         case 12: bedLP = SVF(140, 1.0, sr); lowLP = SVF(320, 1.4, sr); hissBP = SVF(5000, 0.8, sr); room = 0.05
         case 13: windBP = SVF(400, 2.5, sr); lowLP = SVF(180, 0.7, sr); room = 0.2
         case 14: rainBP = SVF(2800, 0.6, sr); tubeBP = SVF(500, 4, sr); pourBP = SVF(1200, 0.8, sr); room = 0.22
-        case 15: rainLP = SVF(1200, 0.7, sr); room = 0.2
+        case 15: rainLP = SVF(2200, 0.6, sr); room = 0.22
         case 16: lowLP = SVF(170, 0.7, sr); hissBP = SVF(4000, 0.8, sr); room = 0.12
         default: break
         }
@@ -284,15 +284,18 @@ final class ExtraSynth {
                 if pourT > pourLen { pourT = -1 }
             }
         case 15:
-            if unit() < 350 * inv {
+            // Rain is thousands of tiny broadband splashes over a soft wash; no tones anywhere.
+            let g = 0.75 + 0.25 * slow2
+            if unit() < 650 * g * inv {
                 let u = unit()
-                fire(1, tau: 0.0015, amp: 0.6 * u * u * u, attack: 0.0002, filtF: 2500 * powf(2, unit() * 1.2), filtQ: 1.2, pan: unit() - 0.5)
+                fire(1, tau: 0.0008 + 0.0012 * unit(), amp: 0.55 * u * u * u, attack: 0.0002, filtF: 1500 * powf(2, unit() * 2), filtQ: 0.7, pan: unit() - 0.5)
             }
-            if unit() < 3 * inv {
-                let f = 1800 * powf(2, unit() * 0.5)
-                fire(0, f0: f, f1: f * 1.2, chirpTau: 0.01, tau: 0.015, amp: 0.12 * unit(), attack: 0.001, pan: unit() - 0.5)
+            if unit() < 4 * inv {
+                // A heavier drop on the sill: a short low thump plus its splash
+                fire(2, tau: 0.008, amp: 0.35 * (0.5 + 0.5 * unit()), attack: 0.0005, filtF: 420, filtQ: 0.8, pan: unit() - 0.5)
+                fire(1, tau: 0.004, amp: 0.25, attack: 0.0003, filtF: 3200, filtQ: 0.6, pan: unit() - 0.5)
             }
-            mono = rainLP.tick(pink(w)).lp * 0.25 * (0.7 + 0.3 * slow2)
+            mono = rainLP.tick(pink(w)).lp * 0.42 * g
         case 16:
             let roar = lowLP.tick(brownStep()).lp * 0.8 * (0.7 + 0.3 * slow)
             if unit() < 9 * inv {
@@ -301,8 +304,9 @@ final class ExtraSynth {
             }
             nextPop -= inv
             if nextPop <= 0 {
-                fire(2, tau: 0.03, amp: 0.4, attack: 0.001, filtF: 300, filtQ: 0.8)
-                fire(0, f0: 700 * (0.8 + 0.4 * unit()), tau: 0.025, amp: 0.3, attack: 0.001)
+                // A knot popping: a low thump with a sharp broadband snap on top
+                fire(2, tau: 0.03, amp: 0.45, attack: 0.001, filtF: 260, filtQ: 0.8, pan: unit() * 0.6 - 0.3)
+                fire(1, tau: 0.004, amp: 0.7, attack: 0.0002, filtF: 2400 * powf(2, unit() * 0.8), filtQ: 0.5, pan: unit() * 0.6 - 0.3)
                 nextPop = 0.6 + 3 * unit()
             }
             mono = roar + hissBP.tick(pink(w)).bp * 0.03
