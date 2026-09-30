@@ -572,7 +572,7 @@ final class NoiseState {
     static let names = ["Off", "Brown Noise · deep and warm", "Pink Noise · soft and even", "Ocean Waves · slow swells", "Soft Hiss · airy",
                         "Live Hourglass · follows the sand", "Close-up Trickle · fine, follows the sand", "Grains on Glass · bright, steady",
                         "Big Hourglass · deep, follows the sand",
-                        "Lava Lamp · warm hum and bloops", "Water Clock · follows the drops", "Cave Drips · echoing",
+                        "Lava Lamp · warm hum", "Water Clock · follows the drops", "Cave Drips · echoing",
                         "Candle Flame · soft flutter", "Winter Hush · soft wind", "Zen Garden · stream and tock",
                         "Gentle Rain · soft patter", "Fireplace · soft crackle"]
     static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.59, 0.47, 0.36, 0.40, 0.48, 0.405, 0.61]

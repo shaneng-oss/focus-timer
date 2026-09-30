@@ -134,12 +134,6 @@ final class ExtraSynth {
 
     func handle(_ e: SoundEvent) {
         switch (kind, e.kind) {
-        case (9, .bloop):
-            let f0 = 190 * (0.85 + 0.3 * unit())
-            fire(0, f0: f0, f1: f0 * 0.45, chirpTau: 0.13, tau: 0.26, amp: 0.8 * (0.6 + 0.4 * e.a), attack: 0.012)
-            fire(2, tau: 0.07, amp: 0.45, attack: 0.004, filtF: 420, filtQ: 0.7)
-        case (9, .plip):
-            fire(0, f0: 100, f1: 160, chirpTau: 0.09, tau: 0.13, amp: 0.3, attack: 0.006)
         case (10, .drop):
             plink(depth: e.a, size: max(0.3, e.b), pan: unit() * 0.5 - 0.25)
         case (12, .light):

@@ -446,9 +446,6 @@ final class LavaModule: StyleModule {
     func feedSound(_ st: NoiseState, dt: CGFloat, running: Bool, previewPhase: Float?) {
         for e in sim.events { st.post(e) }
         sim.events.removeAll(keepingCapacity: true)
-        if previewPhase != nil && !running {
-            previewClock += dt
-            if previewClock > 1.3 { previewClock = 0; st.post(SoundEvent(kind: .bloop, a: 0.8)) }
-        }
+        _ = (dt, running, previewPhase, previewClock)
     }
 }
