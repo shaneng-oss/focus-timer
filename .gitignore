@@ -1,0 +1,13 @@
+# Build products
+build/
+SandTimer
+*.app
+*.zip
+
+# Test output
+*.wav
+*.m4a
+*.png
+!docs/*.png
+
+.DS_Store
