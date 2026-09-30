@@ -552,19 +552,19 @@ struct GrainProfile {
         // 3 kHz to 10 kHz, over a deep, warm low bed. Bare glass is only a little brighter than sand.
         case 5: return GrainProfile(rate: (22000, 16000), spread: (1.0, 1.0), tickMs: (0.5, 0.35), hissF: (9000, 9800), hissQ: (0.6, 0.6),
                                     airF: (12500, 13000), click: (0, 0.12), clickF: 9500, body: (3.6, 2.4), bodyF: 140, flicker: 0.1, room: 0.15,
-                                    level: [0.057, 0.0604, 0.0652, 0.0727, 0.0823])
+                                    level: [0.332, 0.2923, 0.2574, 0.2272, 0.2024])
         // Close-up: finer, brighter, with less of the low bed.
         case 6: return GrainProfile(rate: (24000, 18000), spread: (1.0, 1.0), tickMs: (0.4, 0.3), hissF: (9200, 10000), hissQ: (0.6, 0.6),
                                     airF: (13000, 13500), click: (0, 0.12), clickF: 9800, body: (2.0, 1.3), bodyF: 140, flicker: 0.12, room: 0.1,
-                                    level: [0.0805, 0.0817, 0.0842, 0.0883, 0.0949])
+                                    level: [0.4093, 0.3428, 0.292, 0.2499, 0.2165])
         // Grains on glass: steady and bright.
         case 7: return GrainProfile(rate: (18000, 18000), spread: (1.0, 1.0), tickMs: (0.3, 0.3), hissF: (9500, 9500), hissQ: (0.6, 0.6),
                                     airF: (13000, 13000), click: (0.15, 0.15), clickF: 9800, body: (1.6, 1.6), bodyF: 140, flicker: 0.12, room: 0.15,
-                                    level: [0.0914, 0.0914, 0.0914, 0.0914, 0.0914], fixed: 1)
+                                    level: [0.2031, 0.2031, 0.2031, 0.2031, 0.2031], fixed: 1)
         // Big: a deeper pour with more of the low bed.
         case 8: return GrainProfile(rate: (20000, 14000), spread: (1.1, 1.0), tickMs: (0.7, 0.45), hissF: (7000, 8500), hissQ: (0.55, 0.55),
                                     airF: (10500, 11500), click: (0, 0.1), clickF: 8000, body: (4.2, 2.8), bodyF: 130, flicker: 0.12, room: 0.2,
-                                    level: [0.046, 0.0496, 0.0555, 0.0635, 0.0747])
+                                    level: [0.3286, 0.2918, 0.2643, 0.2381, 0.2165])
         default: return nil
         }
     }
@@ -577,7 +577,7 @@ final class NoiseState {
                         "Lava Lamp · warm hum", "Water Clock · follows the drops", "Cave Drips · echoing",
                         "Candle Flame · soft flutter", "Winter Hush · soft wind", "Zen Garden · stream and tock",
                         "Gentle Rain · soft patter", "Fireplace · soft crackle"]
-    static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.83, 0.85, 0.36, 0.40, 0.57, 0.405, 0.61]
+    static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.83, 0.85, 0.36, 0.40, 0.17, 0.405, 0.61]
     static let liveKinds: Set<Int> = [5, 6, 8]
     static let hourglassKinds = [5, 6, 7, 8]
     static let ambientKinds = [1, 2, 3, 4, 15, 16]
@@ -693,7 +693,7 @@ final class NoiseState {
     /// One grain process whose sound glides from grains striking bare glass (short, crisp, high)
     /// to grains settling on a deep bed of sand (longer, softer, lower, dense and smooth).
     @inline(__always) func grainMono() -> Float {
-        sFlow += (liveFlow - sFlow) * 0.0006
+        sFlow += (liveFlow - sFlow) * 0.00005
         sFall += (liveFall - sFall) * 0.0003
         sSlide += (liveSlide - sSlide) * 0.0015
         sBright += (liveBright - sBright) * 0.00002
@@ -706,29 +706,21 @@ final class NoiseState {
             let f = min(max(b, 0), 1) * 4, i = min(3, Int(f)), t = f - Float(i)
             liveGain = gp.level[i] + (gp.level[i + 1] - gp.level[i]) * t
         }
+        // Real sand is so many grains a second that the ear hears one smooth, shaped hiss. So the
+        // excitation is steady noise (no grain events, no flutter); only the tone glides.
         let fl = gp.fixed != nil ? 1 : sFlow
-        let lambda = mix(gp.rate) * fl * flow * (1 + sSlide * 0.6)
-        if unitF() < lambda / sr {
-            let a = powf(unitF(), mix(gp.spread)) * (0.5 + 0.5 * sFall) * liveGain
-            tickEnv += a
-            clickEnv += a * mix(gp.click)
-        }
-        tickEnv *= tickDecay
-        clickEnv *= clickDecay
+        _ = tickDecay
         let w = white()
-        let exc = tickEnv * w
+        let exc = w * (0.5 + 0.5 * sFall) * liveGain * fl
         var out = hiss.tick(exc).bp
-        out += clickBP.tick(clickEnv * w).bp * 2.5
+        out += clickBP.tick(exc * mix(gp.click)).bp * 2.5
         let body = mix(gp.body)
         if body > 0.001 { out += bodyF.tick(exc).lp * body }
-        if sSlide > 0.002 { out += slideF.tick(w).bp * sSlide * 0.12 }
         return air.tick(out).lp
     }
 
     @inline(__always) func hourglassSample() -> (Float, Float) {
         counter &+= 1
-        if counter & 511 == 0 { flowT = 1 - gp.flicker + 2 * gp.flicker * unitF() }
-        flow += (flowT - flow) * 0.0004
         var out = grainMono()
         if !out.isFinite { configure(kind); out = 0 }
         tap[tapPos] = out
@@ -1250,6 +1242,7 @@ let lavaStyles: [LavaStyle] = [
 
 struct WaxDrop {
     var x, y, vy, m: CGFloat
+    var vx: CGFloat = 0
     var phase: CGFloat
     var merging: CGFloat = 0        // 0 while moving, then 0...1 as it melts into a pool
     var m0: CGFloat = 0
@@ -1276,6 +1269,7 @@ final class LavaSim: TimerBody {
     var shownTop: CGFloat = 0, shownBot: CGFloat = 0
     var busy = true
     var riseTimer: CGFloat = 10
+    var pointer: CGPoint?
     var events: [SoundEvent] = []
     var rng = RNG(s: 0x2545_F491_4F6C_DD1D)
     private var areaTop: [CGFloat] = [0], areaBot: [CGFloat] = [0]
@@ -1302,11 +1296,22 @@ final class LavaSim: TimerBody {
     var hasTop: Bool { shownTop > 0.4 }
     var hasBottom: Bool { shownBot > 0.4 }
     func topSurface(_ x: CGFloat) -> CGFloat {
-        LL.top + shownTop + 1.8 * sin(x * 0.08 + time * 0.5) + 1.1 * sin(x * 0.19 - time * 0.9)
+        var y = LL.top + shownTop + 1.8 * sin(x * 0.08 + time * 0.5) + 1.1 * sin(x * 0.19 - time * 0.9)
+        if let p = pointer, p.y > y {
+            let k = max(0, 1 - (p.y - y) / 70) * exp(-pow((x - p.x) / 16, 2))
+            y += 8 * k * pull
+        }
+        return y
     }
     func bottomSurface(_ x: CGFloat) -> CGFloat {
-        LL.bottom - shownBot + 2.0 * sin(x * 0.07 - time * 0.4) + 1.2 * sin(x * 0.16 + time * 0.8)
+        var y = LL.bottom - shownBot + 2.0 * sin(x * 0.07 - time * 0.4) + 1.2 * sin(x * 0.16 + time * 0.8)
+        if let p = pointer, p.y < y {
+            let k = max(0, 1 - (y - p.y) / 70) * exp(-pow((x - p.x) / 16, 2))
+            y -= 8 * k * pull
+        }
+        return y
     }
+    var pull: CGFloat = 0           // how strongly the wax is answering the cursor right now
 
     var inFlight: Bool { drops.contains { !$0.decor } }
 
@@ -1367,6 +1372,17 @@ final class LavaSim: TimerBody {
                 let rising = d.decor && d.riseTo != 0
                 let target: CGFloat = rising ? -14 : 16 + 12 * sqrt(r / 5)
                 d.vy += (target - d.vy) * min(1, dt * 1.2)
+                if let p = pointer {
+                    // The cursor is a warm spot: nearby blobs drift toward it
+                    let dx = p.x - d.x, dy = p.y - d.y, dist = max(1, hypot(dx, dy))
+                    if dist < 80 {
+                        let k = (1 - dist / 80) * pull
+                        d.vx += dx / dist * 70 * k * dt
+                        d.vy += dy / dist * 40 * k * dt
+                    }
+                }
+                d.vx *= exp(-dt * 1.5)
+                d.x += d.vx * dt
                 d.y += d.vy * dt
                 d.x += sin(time * 0.7 + d.phase) * 3 * dt
                 d.x = min(max(d.x, L.cx - LL.half(d.y) + r), L.cx + LL.half(d.y) - r)
@@ -1419,7 +1435,8 @@ final class LavaSim: TimerBody {
         let tTop = topHeight(topMass), tBot = botHeight(bottomMass)
         shownTop += (tTop - shownTop) * min(1, dt * 4)
         shownBot += (tBot - shownBot) * min(1, dt * 4)
-        busy = flowing || !drops.isEmpty || !tails.isEmpty || abs(tTop - shownTop) > 0.01 || abs(tBot - shownBot) > 0.01
+        pull += ((pointer != nil ? 1 : 0) - pull) * min(1, dt * 3)
+        busy = flowing || !drops.isEmpty || !tails.isEmpty || abs(tTop - shownTop) > 0.01 || abs(tBot - shownBot) > 0.01 || pull > 0.01
     }
 
     func catchUp(_ amount: CGFloat) {
@@ -2082,6 +2099,33 @@ final class HourglassView: NSView {
         NSMenu.popUpContextMenu(m, with: event, for: self)
     }
 
+    private var tracking: NSTrackingArea?
+    private var lastMove: (CGPoint, TimeInterval)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let t = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(t)
+        tracking = t
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        var v = CGPoint.zero
+        if let (q, t0) = lastMove, event.timestamp > t0 {
+            let dt = min(0.1, event.timestamp - t0)
+            v = CGPoint(x: (p.x - q.x) / dt, y: (p.y - q.y) / dt)
+        }
+        lastMove = (p, event.timestamp)
+        app?.pointerMoved(p, velocity: v)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        lastMove = nil
+        app?.pointerMoved(nil, velocity: .zero)
+    }
+
     override func scrollWheel(with event: NSEvent) {
         if event.modifierFlags.contains(.option) {
             let d = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY / 6 : event.scrollingDeltaY
@@ -2274,6 +2318,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if body.busy { draw = true }
         }
         if let d = doneAt, now - d < 9 { draw = true }
+        if abs(hoverTiltTarget - hoverTilt) > 0.0004 {
+            hoverTilt += (hoverTiltTarget - hoverTilt) * min(1, dt * 5)
+            draw = true
+        }
         let label = timeText()
         if label != lastLabel {
             lastLabel = label
@@ -2281,6 +2329,25 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateStatusTitle()
         }
         if draw && panel.isVisible { renderFrame() }
+    }
+
+    var hoverTilt: CGFloat = 0, hoverTiltTarget: CGFloat = 0
+
+    /// Mouse over the timer: styles react to it (a leaning flame, drifting wax, ripples), and the
+    /// hourglass tilts a little toward the cursor.
+    func pointerMoved(_ v: CGPoint?, velocity: CGPoint) {
+        guard flipT == nil else { return }
+        var lp: CGPoint? = nil
+        if let v {
+            lp = CGPoint(x: (v.x - view.bounds.midX) / scale + L.width / 2, y: (v.y - view.bounds.midY) / scale + L.height / 2)
+        }
+        current.pointer(lp, velocity: CGPoint(x: velocity.x / scale, y: velocity.y / scale))
+        if let p = lp, p.x < L.ow, styleKind == .sand {
+            hoverTiltTarget = ((p.x - L.cx) / L.ow) * 0.07
+        } else {
+            hoverTiltTarget = 0
+        }
+        forceDraw = true
     }
 
     func renderFrame() {
@@ -2297,7 +2364,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             texWork = w
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: w)
         }
-        current.render(ui: uiState(), bounds: view.bounds, scale: scale, angle: -flipAngle, backing: panel.backingScaleFactor, texScale: texPS)
+        current.render(ui: uiState(), bounds: view.bounds, scale: scale, angle: -flipAngle + hoverTilt, backing: panel.backingScaleFactor, texScale: texPS)
     }
 
     func fmt(_ secs: Double) -> String {
@@ -2829,7 +2896,12 @@ func renderStylePNG(path: String, style: Int, progress: Double, minutes: Double,
     let rate = m.body.totalMass / CGFloat(duration)
     var t = 0.0
     let dt = 1.0 / 60
+    let ptr: CGPoint? = argValue("--pointer").flatMap { v in
+        let c = v.split(separator: ",").compactMap { Double($0) }
+        return c.count == 2 ? CGPoint(x: c[0], y: c[1]) : nil
+    }
     while t < progress * duration || (progress >= 1 && m.body.busy) {
+        if let p = ptr, t > progress * duration - 0.6 { m.pointer(CGPoint(x: p.x + CGFloat(sin(t * 40)) * 6, y: p.y), velocity: CGPoint(x: 240, y: 0)) }
         m.body.update(CGFloat(dt), drain: t < duration && lit ? rate * CGFloat(dt) : 0)
         t += dt
         if t > duration + 30 { break }

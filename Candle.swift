@@ -45,6 +45,8 @@ final class CandleSim: TimerBody {
     var runs: [WaxRun] = []
     var smoke: [Smoke] = []
     var dripTimer: CGFloat = 8
+    var pointer: CGPoint?
+    var lean: CGFloat = 0, mouseGust: CGFloat = 0
     var events: [SoundEvent] = []
     var busy = true
     var rng = RNG(s: 0x6C0F_FEE5_1234_ABCD)
@@ -90,6 +92,15 @@ final class CandleSim: TimerBody {
             gustTimer = gustTarget > 0 ? 0.4 + rng.unit() * 1.2 : 2 + rng.unit() * 6
         }
         gust += (gustTarget - gust) * min(1, dt * 5)
+        // The cursor is a draught: the flame leans toward it and flutters when it moves fast.
+        var leanTarget: CGFloat = 0
+        if let p = pointer {
+            let dy = (topY - CL.wickH - 14) - p.y
+            let near = max(0, 1 - abs(dy) / 120)
+            leanTarget = min(1, max(-1, (p.x - L.cx) / 45)) * near
+        }
+        lean += (leanTarget - lean) * min(1, dt * 6)
+        mouseGust *= exp(-dt * 3)
 
         // Wax runs
         if lit && false {
@@ -114,7 +125,7 @@ final class CandleSim: TimerBody {
             smoke[i].t += dt
             if smoke[i].t > 5 { smoke.remove(at: i) }
         }
-        busy = lit || flame > 0 || !smoke.isEmpty || anyMoving || flare > 0.01
+        busy = lit || flame > 0 || !smoke.isEmpty || anyMoving || flare > 0.01 || abs(lean) > 0.01 || mouseGust > 0.01
     }
 
     func catchUp(_ amount: CGFloat) {
@@ -194,11 +205,11 @@ final class CandleRenderer {
     func flame() -> Flame {
         let t = sim.time
         let level = sim.flame
-        let g = sim.gust
+        let g = min(1, sim.gust + sim.mouseGust)
         let scale = (0.2 + 0.8 * level) * (1 + 0.35 * sim.flare)
         let h = 30 * (0.85 + 0.3 * wobble(t * 1.1, 1)) * (1 - 0.35 * g) * scale
         let w = 9.5 * (0.9 + 0.2 * wobble(t * 1.4, 7)) * (1 + 0.25 * g) * (0.6 + 0.4 * level)
-        let dx = (wobble(t * 0.9, 3) - 0.5) * 6 * (1 + 2.2 * g) + g * 5
+        let dx = (wobble(t * 0.9, 3) - 0.5) * 6 * (1 + 2.2 * g) + sim.gust * 5 + sim.lean * 11
         let bright = (0.82 + 0.18 * wobble(t * 2.3, 11)) * level
         return Flame(x: L.cx, y: sim.topY - CL.wickH, h: h, w: w, dx: dx, bright: bright, level: level)
     }
@@ -528,6 +539,11 @@ final class CandleModule: StyleModule {
     }
 
     func still(_ ctx: CGContext, ui: UIState) { r.draw(ctx, ui: ui) }
+
+    func pointer(_ p: CGPoint?, velocity: CGPoint) {
+        sim.pointer = p
+        if p != nil { sim.mouseGust = min(1, max(sim.mouseGust, hypot(velocity.x, velocity.y) / 900)) }
+    }
 
     func feedSound(_ st: NoiseState, dt: CGFloat, running: Bool, previewPhase: Float?) {
         for e in sim.events { st.post(e) }

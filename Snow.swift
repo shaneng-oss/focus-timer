@@ -50,6 +50,8 @@ final class SnowSim: TimerBody {
     var busy = true
     var settling: CGFloat = 0
     var rng = RNG(s: 0x5A5A_1234_9876_ABCD)
+    var pointer: CGPoint?
+    var pointerV = CGPoint.zero
 
     init() {
         N = Int(SL.R * 2 / SL.dx) + 1
@@ -188,6 +190,21 @@ final class SnowSim: TimerBody {
         }
         settling = relax(passes: max(1, Int(dt * 240)))
 
+        // The cursor pushes the snow aside; a fast swipe stirs the whole globe a little.
+        if let p = pointer, SL.inside(p.x, p.y) {
+            let speed = hypot(pointerV.x, pointerV.y)
+            if speed > 600 { stir = max(stir, 0.35) }
+            for k in motes.indices {
+                let dx = motes[k].x - p.x, dy = motes[k].y - p.y, d = max(1, hypot(dx, dy))
+                if d < 30 { let f = (30 - d) / 30 * 60 * dt; motes[k].x += dx / d * f; motes[k].y += dy / d * f }
+            }
+            for k in flakes.indices {
+                let dx = flakes[k].x - p.x, dy = flakes[k].y - p.y, d = max(1, hypot(dx, dy))
+                if d < 30 { let f = (30 - d) / 30 * 60 * dt; flakes[k].x += dx / d * f; flakes[k].y += dy / d * f }
+            }
+            drift = 1
+            pointerV = CGPoint(x: pointerV.x * 0.85, y: pointerV.y * 0.85)
+        }
         // Suspended snow: slow sinking drift, stirred up by a shake, freezing when the timer stops.
         if drift > 0.01 {
             let amp = drift * (1 + stir * 6)
@@ -199,7 +216,7 @@ final class SnowSim: TimerBody {
                 motes[k] = m
             }
         }
-        busy = flowing || !flakes.isEmpty || (drift > 0.01 && airborne > 0.01) || settling > 1e-3 || stir > 0.05
+        busy = flowing || !flakes.isEmpty || (drift > 0.01 && airborne > 0.01) || settling > 1e-3 || stir > 0.05 || pointer != nil
     }
 
     /// Lay `m` of snow onto the ground as an even fall would.
@@ -587,6 +604,11 @@ final class SnowModule: StyleModule {
     }
 
     func still(_ ctx: CGContext, ui: UIState) { r.draw(ctx, ui: ui) }
+
+    func pointer(_ p: CGPoint?, velocity: CGPoint) {
+        sim.pointer = p
+        if p != nil { sim.pointerV = velocity }
+    }
 
     func feedSound(_ st: NoiseState, dt: CGFloat, running: Bool, previewPhase: Float?) {
         if let p = previewPhase, !running {

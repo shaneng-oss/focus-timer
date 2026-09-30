@@ -166,7 +166,7 @@ final class ExtraSynth {
         case 11: room = 0.05; wet = 0.5; bedLP = SVF(100, 0.7, sr)
         case 12: bedLP = SVF(140, 1.0, sr); lowLP = SVF(320, 1.4, sr); hissBP = SVF(5000, 0.8, sr); room = 0.05
         case 13: windBP = SVF(400, 2.5, sr); lowLP = SVF(180, 0.7, sr); room = 0.2
-        case 14: rainBP = SVF(1500, 0.5, sr); hissBP = SVF(6000, 0.7, sr); tubeBP = SVF(500, 3, sr); pourBP = SVF(1100, 0.6, sr); lowLP = SVF(120, 0.7, sr); room = 0.2
+        case 14: rainBP = SVF(1150, 0.9, sr); rainLP = SVF(3800, 0.7, sr); tubeBP = SVF(500, 3, sr); pourBP = SVF(1100, 0.6, sr); lowLP = SVF(150, 0.7, sr); room = 0.2
         case 15: rainLP = SVF(2200, 0.6, sr); room = 0.22
         case 16: lowLP = SVF(170, 0.7, sr); hissBP = SVF(4000, 0.8, sr); room = 0.12
         default: break
@@ -343,27 +343,28 @@ final class ExtraSynth {
             }
             mono = (wind + hush) * (0.35 + 0.65 * sAir)
         case 14:
-            // A steady pour into stone, matched to a reference: broadband water between 400 Hz and
-            // 2.5 kHz with a slow gurgle, bubbles low in the range, and a little rumble underneath.
+            // A continuous pour into stone: water noise centred near 1 kHz, rolled off above 4 kHz so
+            // it never hisses, breathing with the gurgle, over a little rumble, with a few soft bubbles.
             let fl = sFlow
             let gur = 1 + 0.22 * sinf(2 * Float.pi * 2.3 * t + slow * 6) + 0.14 * sinf(2 * Float.pi * 5.5 * t + slow2 * 4)
-            // Water only: a steady patter of small drops and bubbles landing in the basin, no hiss.
-            if fl > 0.01 && unit() < 45 * fl * inv {
-                let f0 = 420 * powf(2, unit() * 1.6), u = unit()
-                fire(0, f0: f0, f1: f0 * 1.12, chirpTau: 0.012, tau: 0.008 + 0.014 * unit(), amp: 0.42 * (0.3 + 0.7 * u * u) * gur, attack: 0.001, pan: -0.35 + 0.3 * unit())
-                fire(2, tau: 0.006, amp: 0.12 * u, attack: 0.0005, filtF: 700, filtQ: 0.8, pan: -0.3)
+            if fl > 0.01 && unit() < 12 * fl * inv {
+                let f0 = 380 * powf(2, unit() * 1.3), u = unit()
+                fire(0, f0: f0, f1: f0 * 1.1, chirpTau: 0.015, tau: 0.01 + 0.015 * unit(), amp: 0.16 * (0.3 + 0.7 * u * u) * gur, attack: 0.001, pan: -0.35 + 0.3 * unit())
             }
             if counter & 63 == 0 { tubeBP.set(280 + 520 * sFill, 3, sr) }
             let vs = (vl + vr) * 0.5
             let res = tubeBP.tick(vs).bp * 0.4 * fl
             vl += res * 0.6; vr += res * 0.4
-            mono = 0
+            let stream = rainLP.tick(rainBP.tick(pink(w)).bp).lp * 2.4 * (0.72 + 0.28 * gur) + lowLP.tick(brownStep()).lp * 0.25
+            mono = stream * fl
             if pourT >= 0 {
                 pourT += inv
                 let e = min(1, pourT / 0.12) * (pourT < pourLen - 0.3 ? 1 : max(0, (pourLen - pourT) / 0.3))
-                if unit() < 200 * inv {
-                    let f0 = 600 * powf(2, unit() * 1.6), u = unit()
-                    fire(0, f0: f0, f1: f0 * 1.2, chirpTau: 0.01, tau: 0.008 + 0.01 * unit(), amp: 0.35 * u * u * e, attack: 0.001, pan: -0.3)
+                let gur2 = 1 + 0.5 * sinf(2 * Float.pi * 6.5 * pourT)
+                mono += rainLP.tick(pourBP.tick(w).bp).lp * 0.9 * e * gur2
+                if unit() < 120 * inv {
+                    let f0 = 500 * powf(2, unit() * 1.4), u = unit()
+                    fire(0, f0: f0, f1: f0 * 1.15, chirpTau: 0.01, tau: 0.008 + 0.01 * unit(), amp: 0.25 * u * u * e, attack: 0.001, pan: -0.3)
                 }
                 if pourT > pourLen { pourT = -1 }
             }

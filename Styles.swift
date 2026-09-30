@@ -53,6 +53,12 @@ protocol StyleModule: AnyObject {
     func still(_ ctx: CGContext, ui: UIState)
     /// Called every frame the sound is on. `previewPhase` is 0...1 while a sound is being auditioned.
     func feedSound(_ st: NoiseState, dt: CGFloat, running: Bool, previewPhase: Float?)
+    /// The mouse over the object (in the object's own coordinates), or nil when it leaves.
+    func pointer(_ p: CGPoint?, velocity: CGPoint)
+}
+
+extension StyleModule {
+    func pointer(_ p: CGPoint?, velocity: CGPoint) {}
 }
 
 // MARK: - Shared drawing helpers
@@ -416,19 +422,18 @@ final class SandModule: StyleModule {
             st.liveFlow = 0.85; st.liveBright = 1 - 0.9 * p; st.liveFall = 1 - 0.6 * p; st.liveSlide = 0
             return
         }
-        let perSec = CGFloat(sim.landedCount) / max(dt, 1.0 / 240)
-        let strength = min(1.3, max(0.6, 0.55 + sim.emitRate / 250))
-        st.liveFlow = Float(min(2, perSec / sim.emitRate) * strength)
+        // The flow of a real hourglass is constant, so the sound's level is too; only its tone moves.
+        _ = slideAvg
+        st.liveFlow = running || sim.emitting ? 1 : 0
         st.liveBright = Float(sim.impactBrightness)
         st.liveFall = Float(min(1, max(0.15, (sim.surfaceAt(sim.bot, L.cx) - L.neckBottom) / L.chamberH)))
-        // The pile creeps continuously; only bursts above its usual flow are heard as a slide.
-        slideAvg += (sim.slideRate - slideAvg) * min(1, dt / 3)
-        st.liveSlide = Float(min(1, max(0, (sim.slideRate / max(slideAvg, 1) - 1.1) * 1.5)))
+        st.liveSlide = 0
     }
 }
 
 final class LavaModule: StyleModule {
     let sim = LavaSim()
+    func pointer(_ p: CGPoint?, velocity: CGPoint) { sim.pointer = p }
     lazy var renderer = LavaRenderer(sim: sim)
     lazy var scene = LavaScene(renderer: renderer)
     private var previewClock: CGFloat = 0

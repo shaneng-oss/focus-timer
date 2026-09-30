@@ -63,6 +63,23 @@ final class WaterSim: TimerBody {
     var time: CGFloat = 0
     var busy = true
     var rng = RNG(s: 0x7A3B_5C1D_9E2F_4A6B)
+    var pointer: CGPoint?
+    private var stirCooldown: CGFloat = 0
+
+    /// A finger drawn across the water: ripples spread from wherever the cursor moves.
+    func stir(at p: CGPoint, velocity v: CGPoint) {
+        pointer = p
+        let speed = hypot(v.x, v.y)
+        guard speed > 40, stirCooldown <= 0, abs(p.x - L.cx) < WL.R - 2 else { return }
+        if hasBasinWater && p.y > basinLineY - 6 && p.y < WL.basinFloor {
+            waveImpulse(at: p.x, amp: min(2.5, speed / 300), width: 4)
+            rings.append(WRing(x: p.x, t: 0, strength: 0.45, delay: 0))
+            stirCooldown = 0.06
+        } else if hasResWater && p.y > resSurfaceY - 6 && p.y < WL.resBottom {
+            resBobV += min(4, speed / 200)
+            stirCooldown = 0.08
+        }
+    }
     private var resTable: [CGFloat] = [0]
     private var basinTable: [CGFloat] = [0]
 
@@ -264,6 +281,7 @@ final class WaterSim: TimerBody {
         basinLevel += (bt - basinLevel) * min(1, dt * 6)
         resBobV += (-90 * resBob - 7 * resBobV) * dt
         resBob += resBobV * dt
+        stirCooldown = max(0, stirCooldown - dt)
 
         busy = flowing || !drops.isEmpty || !jets.isEmpty || !rings.isEmpty || waveEnergy > 0.05 || detachT >= 0
             || abs(rt - resLevel) > 0.02 || abs(bt - basinLevel) > 0.02 || abs(resBob) > 0.02
@@ -714,6 +732,10 @@ final class WaterModule: StyleModule {
     }
 
     func still(_ ctx: CGContext, ui: UIState) { r.draw(ctx, ui: ui) }
+
+    func pointer(_ p: CGPoint?, velocity: CGPoint) {
+        if let p { sim.stir(at: p, velocity: velocity) } else { sim.pointer = nil }
+    }
 
     func feedSound(_ st: NoiseState, dt: CGFloat, running: Bool, previewPhase: Float?) {
         for e in sim.events { st.post(e) }

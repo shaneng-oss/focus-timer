@@ -19,6 +19,7 @@ Requires macOS 14 or later on Apple Silicon.
 - **Click** the timer to start or pause. **Double-click** to flip: the time already used becomes the new remaining time (the hourglass turns over, the globe is shaken, the candle is swapped).
 - **Scroll** over it to set the minutes. **Hold ⌥ and scroll** to resize it.
 - **Drag** it anywhere; it remembers its place.
+- **Move the mouse over it** and it answers: the candle flame leans toward the cursor and flutters if you move fast, the lava lamp's wax drifts toward it, water ripples where you cross it, the snow scatters, and the hourglass tilts a little.
 - **Right-click** (or use the menu-bar icon) for timers (5 to 90 minutes, or custom), a focus-task label, the six **Styles** and their colours, the wooden or metal **Frame** finish, sizes, sound, a chime when done, keep-on-top and open-at-login.
 
 ## Sounds

@@ -55,6 +55,18 @@ final class ZenSim: TimerBody {
     var events: [SoundEvent] = []
     var busy = true
     var rng = RNG(s: 0x2E4C_9A31_F0D7_5B6E)
+    var pointer: CGPoint?
+    private var stirCooldown: CGFloat = 0
+
+    func stir(at p: CGPoint, velocity v: CGPoint) {
+        pointer = p
+        let speed = hypot(v.x, v.y)
+        let c = ZL.opening, rx: CGFloat = 12 + 9 * level, ry = rx * 0.32
+        let inside = pow((p.x - c.x) / (rx + 4), 2) + pow((p.y - (206.5 - 7 * level)) / (ry + 4), 2) < 1
+        guard speed > 40, stirCooldown <= 0, inside, level > 0.002 else { return }
+        rings.append(ZRing(t: 0, strength: 0.6))
+        stirCooldown = 0.12
+    }
 
     static let swingDown: CGFloat = 0.45, pourTime: CGFloat = 0.55, swingUp: CGFloat = 0.45, settle: CGFloat = 0.4
     static var cycle: CGFloat { swingDown + pourTime + swingUp + settle }
@@ -144,6 +156,7 @@ final class ZenSim: TimerBody {
             rings[k].t += dt
             if rings[k].t > 1.2 { rings.remove(at: k) }
         }
+        stirCooldown = max(0, stirCooldown - dt)
         let target = bottomMass / max(totalMass, 1)
         level += (target - level) * min(1, dt * 3)
         busy = flowing || tipT >= 0 || !rings.isEmpty || abs(target - level) > 0.001
@@ -565,6 +578,10 @@ final class ZenModule: StyleModule {
     }
 
     func still(_ ctx: CGContext, ui: UIState) { r.draw(ctx, ui: ui) }
+
+    func pointer(_ p: CGPoint?, velocity: CGPoint) {
+        if let p { sim.stir(at: p, velocity: velocity) } else { sim.pointer = nil }
+    }
 
     func feedSound(_ st: NoiseState, dt: CGFloat, running: Bool, previewPhase: Float?) {
         for e in sim.events { st.post(e) }
