@@ -126,7 +126,7 @@ final class VideoRenderer {
         text(ctx, caption, size: 50, weight: .medium, at: CGPoint(x: 82, y: 1204 + rise), alpha: a, tracking: -0.5)
     }
 
-    static let soundRows = [("Live Hourglass", 5), ("Brown Noise", 1), ("Pink Noise", 2), ("Ocean Waves", 3), ("Gentle Rain", 15), ("Fireplace", 16)]
+    static let soundRows = [("Grains on Glass", 7), ("Brown Noise", 1), ("Pink Noise", 2), ("Ocean Waves", 3), ("Gentle Rain", 15), ("Fireplace", 16)]
 
     /// A floating sound menu; the highlight steps through the ambient sounds as they play.
     private func soundCard(_ ctx: CGContext, t: Double, total: Double) -> Int {
@@ -180,7 +180,7 @@ final class VideoRenderer {
         guard writer.startWriting() else { throw writer.error ?? NSError(domain: "video", code: 1) }
         writer.startSession(atSourceTime: .zero)
 
-        st.gain = 1; st.target = 1; st.volume = 0.36            // about a fifth of full volume
+        st.gain = 0; st.target = 1; st.volume = 0.36            // about a fifth of full volume, fading in
         let samplesPerFrame = sr / fps
         let l = UnsafeMutablePointer<Float>.allocate(capacity: samplesPerFrame), r = UnsafeMutablePointer<Float>.allocate(capacity: samplesPerFrame)
         var frameIndex = 0
@@ -229,15 +229,15 @@ final class VideoRenderer {
         }
 
         // ---- the shots
-        let hourglass = Player(.sand, colour: 0, minutes: 25, preroll: 0.6)
-        let hourglass2 = Player(.sand, colour: 0, minutes: 25, preroll: 70)
+        let hourglass = Player(.sand, colour: 0, minutes: 45, preroll: 0.6)
+        let hourglass2 = Player(.sand, colour: 0, minutes: 45, preroll: 130)
         let neck = Cam(zoom: 8.5, focus: CGPoint(x: L.cx, y: L.neckTop + 4))
         let left = Cam(zoom: 3.0, focus: CGPoint(x: 112, y: 162), dx: -180)
         let shots: [Shot] = [
             Shot(player: hourglass, seconds: 6, camFrom: neck, camTo: VideoRenderer.full, camMove: (1.6, 3.8),
-                 label: "01 · SET", caption: "Pick a length. 25 minutes for me.", sound: 5),
-            Shot(player: hourglass, seconds: 7.5, speed: 25 * 60 / 7.5, camFrom: VideoRenderer.full, camTo: Cam(zoom: 3.55, focus: CGPoint(x: 112, y: 175)), camMove: (0, 7.5),
-                 label: "02 · WORK", caption: "Then work. When the sand runs out, stop.", holdDone: 1.8, sound: 5),
+                 label: "01 · SET", caption: "Pick a length. 45 minutes for me, then a quick 5-minute break.", sound: 7),
+            Shot(player: hourglass, seconds: 7.5, speed: 45 * 60 / 7.5, camFrom: VideoRenderer.full, camTo: Cam(zoom: 3.55, focus: CGPoint(x: 112, y: 175)), camMove: (0, 7.5),
+                 label: "02 · WORK", caption: "Then work. When the sand runs out, stop.", holdDone: 1.8, sound: 7),
             Shot(player: hourglass2, seconds: 9.2, camFrom: left, camTo: left, label: "03 · SOUND",
                  caption: "Don't like the default sound? Choose from a range of ambient sounds for extra focus.", soundCard: true),
             Shot(player: Player(.lava, colour: 0, minutes: 25, preroll: 5.5), frame: 1, seconds: 2.8, camFrom: VideoRenderer.full, camTo: VideoRenderer.full,
@@ -289,7 +289,7 @@ final class VideoRenderer {
         }
 
         // ---- family shot and title
-        setSound(5)
+        setSound(7)
         let family = StyleKind.allCases.map { Player($0, colour: $0 == .lava ? 0 : ($0 == .water ? 1 : 0), minutes: 5, preroll: 120) }
         let endFrames = Int(4.2 * Double(fps))
         for f in 0..<endFrames {

@@ -239,17 +239,19 @@ final class ExtraSynth {
             }
             mono = bedLP.tick(brownStep()).lp * 0.25
         case 12:
+            // A flame in still air is nearly silent: a faint low flutter, a whisper of hiss, and the
+            // occasional tiny sizzle from the wick. Gusts add only a little.
             let inten = sFlow
             let bn = brownStep()
             let flut = bedLP.tick(bn).bp + lowLP.tick(bn).bp * 0.5
-            let mod = 0.55 + 0.45 * slow + 1.6 * sGust
-            let hiss = hissBP.tick(pink(w)).bp * 0.06
+            let mod = 0.6 + 0.4 * slow + 0.45 * sGust
+            let hiss = hissBP.tick(pink(w)).bp * 0.05
             nextCrackle -= inv
             if nextCrackle <= 0 {
-                if inten > 0.3 { let u = unit(); fire(1, tau: 0.003, amp: 0.4 * u * u, attack: 0.0003, filtF: 2000 + 1500 * unit(), filtQ: 2) }
-                nextCrackle = 0.2 + 1.6 * unit()
+                if inten > 0.3 { let u = unit(); fire(1, tau: 0.0025, amp: 0.3 * u * u, attack: 0.0003, filtF: 2200 + 1800 * unit(), filtQ: 1.5) }
+                nextCrackle = 0.15 + 1.1 * unit()
             }
-            mono = (flut * 2.2 * mod + hiss) * inten
+            mono = (flut * 0.8 * mod + hiss) * inten
         case 13:
             if counter & 63 == 0 { windBP.set(300 * powf(2, windN), 2.5, sr) }
             let wind = windBP.tick(pink(w)).bp * 1.6 * (0.35 + 0.65 * slow2 * slow2)
