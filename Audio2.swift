@@ -78,11 +78,11 @@ final class ExtraSynth {
         wet = 0
         switch k {
         case 9: bedLP = SVF(90, 0.7, sr); room = 0.1
-        case 10: room = 0.18
-        case 11: room = 0.08; wet = 0.5; bedLP = SVF(100, 0.7, sr)
+        case 10: room = 0.05
+        case 11: room = 0.05; wet = 0.5; bedLP = SVF(100, 0.7, sr)
         case 12: bedLP = SVF(140, 1.0, sr); lowLP = SVF(320, 1.4, sr); hissBP = SVF(5000, 0.8, sr); room = 0.05
         case 13: windBP = SVF(400, 2.5, sr); lowLP = SVF(180, 0.7, sr); room = 0.2
-        case 14: rainBP = SVF(2800, 0.6, sr); tubeBP = SVF(500, 4, sr); pourBP = SVF(1200, 0.8, sr); room = 0.22
+        case 14: rainBP = SVF(1500, 0.5, sr); hissBP = SVF(6000, 0.7, sr); tubeBP = SVF(500, 3, sr); pourBP = SVF(1100, 0.6, sr); lowLP = SVF(120, 0.7, sr); room = 0.2
         case 15: rainLP = SVF(2200, 0.6, sr); room = 0.22
         case 16: lowLP = SVF(170, 0.7, sr); hissBP = SVF(4000, 0.8, sr); room = 0.12
         default: break
@@ -113,15 +113,15 @@ final class ExtraSynth {
         voices[idx] = v
     }
 
-    /// One drip landing in water: a soft splash, the air bubble's note low in the range, and a
-    /// gentle body that rises a little as the water deepens. No glass impact.
+    /// One drip landing in water, matched to a reference recording: the air bubble's note between
+    /// 1.3 and 2.1 kHz drifting slightly down over 50-100 ms, a bright broadband splash, hardly any
+    /// low body, and dry. As the water deepens the note softens and lengthens a little.
     func plink(depth d: Float, size s: Float, pan: Float) {
-        let f0 = 650 * powf(2, unit() * 1.2)
-        fire(0, f0: f0, f1: f0 * 1.25, chirpTau: 0.025, tau: 0.045 + 0.04 * unit(), amp: 0.5 * s, attack: 0.003, pan: pan)
-        fire(1, tau: 0.02 + 0.015 * s, amp: 0.3 * s, attack: 0.0015, filtF: 2000, filtQ: 0.7, pan: pan)
-        let fb = 140 + 220 * powf(max(d, 0.05), 1.2)
-        fire(0, f0: fb, f1: fb * 0.96, chirpTau: 0.05, tau: 0.12, amp: 0.35 * s, attack: 0.004, pan: pan)
-        fire(2, tau: 0.03, amp: 0.25 * s, attack: 0.002, filtF: 500, filtQ: 0.8, pan: pan)
+        let f0 = 1300 * powf(2, unit() * 0.7) * (1 - 0.08 * d)
+        fire(0, f0: f0, f1: f0 * 0.95, chirpTau: 0.06, tau: 0.028 + 0.02 * unit() + 0.012 * d, amp: 0.5 * s, attack: 0.002, pan: pan)
+        fire(1, tau: 0.018 + 0.01 * s, amp: 0.56 * s, attack: 0.0008, filtF: 3200, filtQ: 0.6, pan: pan)
+        fire(1, tau: 0.011, amp: 0.22 * s, attack: 0.0005, filtF: 6000, filtQ: 0.7, pan: pan)
+        fire(2, tau: 0.02, amp: 0.12 * s, attack: 0.002, filtF: 400, filtQ: 0.8, pan: pan)
     }
 
     func handle(_ e: SoundEvent) {
@@ -136,11 +136,12 @@ final class ExtraSynth {
         case (13, .swish):
             fire(1, tau: 0.22, amp: 0.5, attack: 0.05, filtF: 1400, filtQ: 0.7)
         case (14, .tock):
-            fire(0, f0: 165, tau: 0.10, amp: 0.9, attack: 0.0006, pan: 0.45)
-            fire(0, f0: 410, tau: 0.05, amp: 0.5, attack: 0.0006, pan: 0.45)
-            fire(0, f0: 980, tau: 0.02, amp: 0.35, attack: 0.0006, pan: 0.45)
-            fire(0, f0: 2100, tau: 0.006, amp: 0.2, attack: 0.0004, pan: 0.45)
-            fire(1, tau: 0.0015, amp: 0.6, attack: 0.0002, filtF: 1500, filtQ: 1, pan: 0.45)
+            // A short hollow knock: bamboo tones near 740 Hz and 1.3 kHz over a low thump, gone in 50 ms
+            fire(0, f0: 740 * (0.97 + 0.06 * unit()), tau: 0.024, amp: 0.9, attack: 0.0006, pan: 0.45)
+            fire(0, f0: 1320, tau: 0.016, amp: 0.45, attack: 0.0005, pan: 0.45)
+            fire(0, f0: 500, tau: 0.02, amp: 0.4, attack: 0.0006, pan: 0.45)
+            fire(2, tau: 0.03, amp: 0.55, attack: 0.001, filtF: 200, filtQ: 0.8, pan: 0.45)
+            fire(1, tau: 0.006, amp: 0.7, attack: 0.0002, filtF: 2500, filtQ: 0.6, pan: 0.45)
         case (14, .pour):
             pourT = 0
             pourLen = 0.5 + 0.5 * e.a
@@ -249,25 +250,27 @@ final class ExtraSynth {
             }
             mono = (wind + hush) * (0.35 + 0.65 * sAir)
         case 14:
+            // A steady pour into stone, matched to a reference: broadband water between 400 Hz and
+            // 2.5 kHz with a slow gurgle, bubbles low in the range, and a little rumble underneath.
             let fl = sFlow
-            if fl > 0.01 && unit() < 70 * fl * inv {
-                let f0 = 1400 * powf(2, unit() * 1.7), u = unit()
-                fire(0, f0: f0, f1: f0 * 1.3, chirpTau: 0.008, tau: 0.005 + 0.008 * unit(), amp: 0.35 * powf(u, 2.5), attack: 0.0008, pan: -0.35)
+            let gur = 1 + 0.22 * sinf(2 * Float.pi * 2.3 * t + slow * 6) + 0.14 * sinf(2 * Float.pi * 5.5 * t + slow2 * 4)
+            if fl > 0.01 && unit() < 120 * fl * inv {
+                let f0 = 500 * powf(2, unit() * 1.8), u = unit()
+                fire(0, f0: f0, f1: f0 * 1.15, chirpTau: 0.01, tau: 0.004 + 0.006 * unit(), amp: 0.3 * u * u * gur, attack: 0.0008, pan: -0.35)
             }
-            if counter & 63 == 0 { tubeBP.set(280 + 520 * sFill, 4, sr) }
-            // The tube's air column colours the trickle and rises in pitch as the tube fills.
+            if counter & 63 == 0 { tubeBP.set(280 + 520 * sFill, 3, sr) }
             let vs = (vl + vr) * 0.5
-            let res = tubeBP.tick(vs).bp * 0.9 * fl
+            let res = tubeBP.tick(vs).bp * 0.4 * fl
             vl += res * 0.6; vr += res * 0.4
-            mono = rainBP.tick(w).bp * 0.05 * fl
+            let water = rainBP.tick(pink(w)).bp * 1.1 * gur + hissBP.tick(w).bp * 0.22 * gur + lowLP.tick(brownStep()).lp * 0.32
+            mono = water * fl
             if pourT >= 0 {
                 pourT += inv
                 let e = min(1, pourT / 0.12) * (pourT < pourLen - 0.3 ? 1 : max(0, (pourLen - pourT) / 0.3))
-                let gur = 1 + 0.5 * sinf(2 * Float.pi * 6.5 * pourT)
-                mono += pourBP.tick(w).bp * 0.4 * e * gur
-                if unit() < 160 * inv {
-                    let f0 = 900 * powf(2, unit() * 1.5), u = unit()
-                    fire(0, f0: f0, f1: f0 * 1.25, chirpTau: 0.01, tau: 0.01 + 0.01 * unit(), amp: 0.3 * u * u * e, attack: 0.001, pan: -0.3)
+                mono += pourBP.tick(w).bp * 0.5 * e * gur
+                if unit() < 200 * inv {
+                    let f0 = 600 * powf(2, unit() * 1.6), u = unit()
+                    fire(0, f0: f0, f1: f0 * 1.2, chirpTau: 0.01, tau: 0.008 + 0.01 * unit(), amp: 0.35 * u * u * e, attack: 0.001, pan: -0.3)
                 }
                 if pourT > pourLen { pourT = -1 }
             }

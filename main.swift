@@ -575,7 +575,7 @@ final class NoiseState {
                         "Lava Lamp · warm hum", "Water Clock · follows the drops", "Cave Drips · echoing",
                         "Candle Flame · soft flutter", "Winter Hush · soft wind", "Zen Garden · stream and tock",
                         "Gentle Rain · soft patter", "Fireplace · soft crackle"]
-    static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.59, 0.47, 0.36, 0.40, 0.48, 0.405, 0.61]
+    static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.83, 0.57, 0.36, 0.40, 0.42, 0.405, 0.61]
     static let liveKinds: Set<Int> = [5, 6, 8]
     static let hourglassKinds = [5, 6, 7, 8]
     static let ambientKinds = [1, 2, 3, 4, 15, 16]
