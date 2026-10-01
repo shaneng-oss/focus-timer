@@ -475,7 +475,7 @@ final class CandleModule: StyleModule {
         for l in [back, front, drips, dripsMask, topFace, pool, poolHi, wick, ember, blue, inner, smoke, waxBody.mask, lit.mask, flame.mask] { l.contentsScale = ps }
         let bk = "\(ui.frame.name)|\(ps)|\((ui.shadow * 10).rounded())"
         if bk != backKey { backKey = bk; back.contents = layerImage(ps) { r.drawBack($0, ui: ui) } }
-        let fk = "\(ui.frame.name)|\(ps)|\(ui.time)|\(ui.paused)|\(ui.dimTime)|\(ui.task)|\((ui.glow * 50).rounded())"
+        let fk = "\(ps)|" + ui.frontKey
         if fk != frontKey { frontKey = fk; front.contents = layerImage(ps) { r.drawFront($0, ui: ui) } }
         if colourKey != r.colour.name {
             colourKey = r.colour.name

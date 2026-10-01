@@ -12,7 +12,9 @@ func makeModule(_ k: StyleKind) -> StyleModule {
     case .water: return WaterModule()
     case .candle: return CandleModule()
     case .snow: return SnowModule()
-    case .zen: return ZenModule()
+    case .disc: return DiscModule()
+    case .horizon: return HorizonModule()
+    case .tree: return TreeModule()
     }
 }
 
@@ -46,7 +48,8 @@ final class Player {
         let s = Int(ceil(remaining - 0.05))
         let time = done ? "Done" : String(format: "%02d:%02d", s / 60, s % 60)
         let glow: CGFloat = done ? CGFloat((0.55 + 0.45 * sin(doneFor * 4)) * max(0, 1 - doneFor / 9)) : 0
-        return UIState(time: time, paused: false, dimTime: false, task: "", frame: frame, glow: glow, shadow: 1, running: !done, done: done)
+        return UIState(time: time, paused: false, dimTime: false, task: "", frame: frame, glow: glow, shadow: 1, running: !done, done: done,
+                       progress: module.body.totalMass > 0 ? module.body.topMass / module.body.totalMass : 0)
     }
 }
 
@@ -248,8 +251,12 @@ final class VideoRenderer {
                  label: "04 · STYLES", caption: "Candle.", slideIn: true, slideOut: true, sound: 12),
             Shot(player: Player(.snow, colour: 0, minutes: 25, preroll: 4), seconds: 2.8, camFrom: VideoRenderer.full, camTo: VideoRenderer.full,
                  label: "04 · STYLES", caption: "Snow globe.", slideIn: true, slideOut: true, sound: 13),
-            Shot(player: Player(.zen, colour: 1, minutes: 25, preroll: 17.3), seconds: 3.4, camFrom: VideoRenderer.full, camTo: VideoRenderer.full,
-                 label: "04 · STYLES", caption: "Bamboo fountain.", slideIn: true, slideOut: true, sound: 14),
+            Shot(player: Player(.disc, colour: 0, minutes: 25, preroll: 6), seconds: 2.8, camFrom: VideoRenderer.full, camTo: VideoRenderer.full,
+                 label: "04 · STYLES", caption: "A focus disc you can read at a glance.", slideIn: true, slideOut: true, sound: 17),
+            Shot(player: Player(.horizon, colour: 0, minutes: 25, preroll: 25 * 60 * 0.55), seconds: 2.8, camFrom: VideoRenderer.full, camTo: VideoRenderer.full,
+                 label: "04 · STYLES", caption: "A sun that sets as the block ends.", slideIn: true, slideOut: true, sound: 18),
+            Shot(player: Player(.tree, colour: 0, minutes: 25, preroll: 25 * 60 * 0.97), seconds: 3.4, camFrom: VideoRenderer.full, camTo: VideoRenderer.full,
+                 label: "04 · STYLES", caption: "A tree that grows while you work and blooms when you are done.", slideIn: true, slideOut: true, sound: 19),
         ]
 
         for shot in shots {
@@ -301,20 +308,22 @@ final class VideoRenderer {
                 backdrop(ctx)
                 ctx.saveGState(); ctx.setAlpha(a)
                 text(ctx, "Focus Timer", size: 92, weight: .semibold, at: CGPoint(x: 0, y: 250 + CGFloat(1 - smooth(t / 0.7)) * 30), alpha: 1, tracking: -1, width: CGFloat(W), align: .center)
-                text(ctx, "A timer you can watch. Six styles, each with its own sound.", size: 34, weight: .regular, at: CGPoint(x: 0, y: 372), alpha: 0.75, width: CGFloat(W), align: .center)
-                let s: CGFloat = 0.74, gap: CGFloat = 4
-                let rowW = CGFloat(family.count) * (L.width * s + gap)
+                text(ctx, "A timer you can watch. Eight styles, each with its own sound.", size: 34, weight: .regular, at: CGPoint(x: 0, y: 372), alpha: 0.75, width: CGFloat(W), align: .center)
+                let s: CGFloat = 0.72, gap: CGFloat = 6
+                let perRow = 4
+                let rowW = CGFloat(perRow) * (L.width * s + gap)
                 for (i, p) in family.enumerated() {
-                    let rise = CGFloat(1 - smooth((t - 0.15 * Double(i)) / 0.7)) * 40
+                    let row = i / perRow, col = i % perRow
+                    let rise = CGFloat(1 - smooth((t - 0.12 * Double(i)) / 0.7)) * 40
                     ctx.saveGState()
-                    ctx.setAlpha(CGFloat(smooth((t - 0.15 * Double(i)) / 0.6)))
-                    ctx.translateBy(x: (CGFloat(W) - rowW) / 2 + CGFloat(i) * (L.width * s + gap), y: 470 + rise)
+                    ctx.setAlpha(CGFloat(smooth((t - 0.12 * Double(i)) / 0.6)))
+                    ctx.translateBy(x: (CGFloat(W) - rowW) / 2 + CGFloat(col) * (L.width * s + gap), y: 430 + CGFloat(row) * (L.height * s + 2) + rise)
                     ctx.scaleBy(x: s, y: s)
                     p.module.still(ctx, ui: p.ui(frame: frameStyles[i == 1 ? 1 : 0]))
                     ctx.restoreGState()
                 }
-                text(ctx, "Free · open source · Mac", size: 34, weight: .medium, at: CGPoint(x: 0, y: 790), alpha: 0.85, width: CGFloat(W), align: .center)
-                text(ctx, "github.com/shaneng-oss/focus-timer", size: 32, weight: .regular, at: CGPoint(x: 0, y: 842), alpha: 0.65, width: CGFloat(W), align: .center)
+                text(ctx, "Free · open source · Mac", size: 34, weight: .medium, at: CGPoint(x: 0, y: 960), alpha: 0.85, width: CGFloat(W), align: .center)
+                text(ctx, "github.com/shaneng-oss/focus-timer", size: 32, weight: .regular, at: CGPoint(x: 0, y: 1012), alpha: 0.65, width: CGFloat(W), align: .center)
                 ctx.restoreGState()
                 finish(ctx)
             }

@@ -1,5 +1,5 @@
-// Sounds for the lava lamp, water clock, candle, snow globe and zen garden, plus rain and fire
-// ambience. Everything is synthesised live from small physical building blocks: short sine "voices"
+// Sounds for the lava lamp, water clock, candle, snow globe, focus disc, horizon and tree, plus
+// white noise, rain and fire ambience. Everything is synthesised live from small physical building blocks: short sine "voices"
 // (a bubble's chirp, a wooden knock, a glass ring), filtered noise bursts (splashes, crackles) and
 // slowly modulated noise beds (wind, a flame's flutter, a fire's roar).
 
@@ -11,9 +11,9 @@ final class ExtraSynth {
     var kind = 0
 
     // Live inputs written by the main thread; smoothed copies are used on the audio thread.
-    var inFlow: Float = 1      // candle: flame intensity · zen: stream flowing · snow: unused
-    var inFill: Float = 0.5    // water: basin depth 0...1 · zen: how full the bamboo tube is
-    var inGust: Float = 0      // candle: gust strength
+    var inFlow: Float = 1      // candle: flame intensity · disc: running · horizon: how fresh the breeze is
+    var inFill: Float = 0.5    // water: basin depth 0...1
+    var inGust: Float = 0      // candle: gust strength · tree: the wind on the canopy
     var inAir: Float = 1       // snow: share of snow still in the air
     var sFlow: Float = 0, sFill: Float = 0.5, sGust: Float = 0, sAir: Float = 1
 
@@ -45,6 +45,8 @@ final class ExtraSynth {
     var nextDrip: Float = 0.8, nextCrackle: Float = 0.2, nextPop: Float = 1.5, nextTinkle: Float = 5
     var pourT: Float = -1, pourLen: Float = 0.9
     var humPh: Float = 0, humPh2: Float = 0, humPh3: Float = 0
+    var phA: Float = 0, phB: Float = 0, phC: Float = 0     // slow modulation phases (wrapped, so they never lose precision)
+    var secPh: Float = 0
     // Cave reverb: three damped feedback combs
     var c0 = [Float](repeating: 0, count: 1493), c1 = [Float](repeating: 0, count: 1949), c2 = [Float](repeating: 0, count: 2411)
     var p0 = 0, p1 = 0, p2 = 0
@@ -166,7 +168,10 @@ final class ExtraSynth {
         case 11: room = 0.05; wet = 0.5; bedLP = SVF(100, 0.7, sr)
         case 12: bedLP = SVF(140, 1.0, sr); lowLP = SVF(320, 1.4, sr); hissBP = SVF(5000, 0.8, sr); room = 0.05
         case 13: windBP = SVF(400, 2.5, sr); lowLP = SVF(180, 0.7, sr); room = 0.2
-        case 14: rainBP = SVF(1150, 0.9, sr); rainLP = SVF(3800, 0.7, sr); tubeBP = SVF(500, 3, sr); pourBP = SVF(1100, 0.6, sr); lowLP = SVF(150, 0.7, sr); room = 0.2
+        case 14: lowLP = SVF(7500, 0.55, sr); room = 0
+        case 17: bedLP = SVF(130, 2.2, sr); hissBP = SVF(900, 1.6, sr); lowLP = SVF(60, 0.7, sr); room = 0.08
+        case 18: windBP = SVF(380, 2.0, sr); lowLP = SVF(140, 0.7, sr); hissBP = SVF(3200, 0.8, sr); room = 0.25
+        case 19: hissBP = SVF(1800, 0.8, sr); rainLP = SVF(4200, 0.7, sr); lowLP = SVF(220, 0.8, sr); windBP = SVF(600, 1.2, sr); room = 0.2
         case 15: rainLP = SVF(2200, 0.6, sr); room = 0.22
         case 16: lowLP = SVF(170, 0.7, sr); hissBP = SVF(4000, 0.8, sr); room = 0.12
         default: break
@@ -224,16 +229,6 @@ final class ExtraSynth {
             fire(2, tau: 0.15, amp: 0.25, attack: 0.01, filtF: 300, filtQ: 0.8)
         case (13, .swish):
             fire(1, tau: 0.22, amp: 0.5, attack: 0.05, filtF: 1400, filtQ: 0.7)
-        case (14, .tock):
-            // A short hollow knock: bamboo tones near 740 Hz and 1.3 kHz over a low thump, gone in 50 ms
-            fire(0, f0: 740 * (0.97 + 0.06 * unit()), tau: 0.024, amp: 0.9, attack: 0.0006, pan: 0.45)
-            fire(0, f0: 1320, tau: 0.016, amp: 0.45, attack: 0.0005, pan: 0.45)
-            fire(0, f0: 500, tau: 0.02, amp: 0.4, attack: 0.0006, pan: 0.45)
-            fire(2, tau: 0.03, amp: 0.55, attack: 0.001, filtF: 200, filtQ: 0.8, pan: 0.45)
-            fire(1, tau: 0.006, amp: 0.7, attack: 0.0002, filtF: 2500, filtQ: 0.6, pan: 0.45)
-        case (14, .pour):
-            pourT = 0
-            pourLen = 0.5 + 0.5 * e.a
         default:
             break
         }
@@ -343,31 +338,8 @@ final class ExtraSynth {
             }
             mono = (wind + hush) * (0.35 + 0.65 * sAir)
         case 14:
-            // A continuous pour into stone: water noise centred near 1 kHz, rolled off above 4 kHz so
-            // it never hisses, breathing with the gurgle, over a little rumble, with a few soft bubbles.
-            let fl = sFlow
-            let gur = 1 + 0.22 * sinf(2 * Float.pi * 2.3 * t + slow * 6) + 0.14 * sinf(2 * Float.pi * 5.5 * t + slow2 * 4)
-            if fl > 0.01 && unit() < 12 * fl * inv {
-                let f0 = 380 * powf(2, unit() * 1.3), u = unit()
-                fire(0, f0: f0, f1: f0 * 1.1, chirpTau: 0.015, tau: 0.01 + 0.015 * unit(), amp: 0.16 * (0.3 + 0.7 * u * u) * gur, attack: 0.001, pan: -0.35 + 0.3 * unit())
-            }
-            if counter & 63 == 0 { tubeBP.set(280 + 520 * sFill, 3, sr) }
-            let vs = (vl + vr) * 0.5
-            let res = tubeBP.tick(vs).bp * 0.4 * fl
-            vl += res * 0.6; vr += res * 0.4
-            let stream = rainLP.tick(rainBP.tick(pink(w)).bp).lp * 2.4 * (0.72 + 0.28 * gur) + lowLP.tick(brownStep()).lp * 0.25
-            mono = stream * fl
-            if pourT >= 0 {
-                pourT += inv
-                let e = min(1, pourT / 0.12) * (pourT < pourLen - 0.3 ? 1 : max(0, (pourLen - pourT) / 0.3))
-                let gur2 = 1 + 0.5 * sinf(2 * Float.pi * 6.5 * pourT)
-                mono += rainLP.tick(pourBP.tick(w).bp).lp * 0.9 * e * gur2
-                if unit() < 120 * inv {
-                    let f0 = 500 * powf(2, unit() * 1.4), u = unit()
-                    fire(0, f0: f0, f1: f0 * 1.15, chirpTau: 0.01, tau: 0.008 + 0.01 * unit(), amp: 0.25 * u * u * e, attack: 0.001, pan: -0.3)
-                }
-                if pourT > pourLen { pourT = -1 }
-            }
+            // White noise, rolled off gently above 7 kHz so it is bright without being harsh on small speakers.
+            mono = lowLP.tick(w).lp * 0.5
         case 15:
             // Rain is thousands of tiny broadband splashes over a soft wash; no tones anywhere.
             let g = 0.75 + 0.25 * slow2
@@ -395,6 +367,32 @@ final class ExtraSynth {
                 nextPop = 0.6 + 3 * unit()
             }
             mono = roar + hissBP.tick(pink(w)).bp * 0.03
+        case 17:
+            // A quartz desk clock's movement heard up close: a soft mechanical whir with the faintest
+            // breath from the stepper once a second. No tick.
+            secPh += inv; if secPh >= 1 { secPh -= 1 }
+            let breath = 1 + 0.1 * expf(-secPh * 7)
+            let whir = bedLP.tick(brownStep()).bp * 1.6 + hissBP.tick(pink(w)).bp * 0.12
+            mono = (whir * breath + lowLP.tick(brownStep()).lp * 0.3) * (0.7 + 0.3 * sFlow)
+        case 18:
+            // Evening air at a window on the sea: a breeze that wanders in pitch, distant surf swelling
+            // every nine seconds or so, and a whisper of high air. Nothing sudden.
+            if counter & 63 == 0 { windBP.set(300 * powf(2, windN * 0.8 + 0.2), 2.0, sr) }
+            phA += 2 * Float.pi * inv / 9.5; if phA > 2 * Float.pi { phA -= 2 * Float.pi }
+            let breeze = windBP.tick(pink(w)).bp * 1.2 * (0.4 + 0.6 * slow2 * slow2) * (0.5 + 0.5 * sFlow)
+            let swell = 0.5 + 0.5 * sinf(phA + slow * 2)
+            let surf = lowLP.tick(brownStep()).lp * (0.25 + 0.75 * swell * swell) * 0.9
+            mono = breeze + surf + hissBP.tick(pink(w)).bp * 0.04
+        case 19:
+            // Leaves in a breeze: a rustle that swells and flutters with the gusts moving the tree, over
+            // a soft wind bed. It never drops to silence.
+            phB += 2 * Float.pi * (4.5 + 2 * slow) * inv; if phB > 2 * Float.pi { phB -= 2 * Float.pi }
+            phC += 2 * Float.pi * 0.7 * inv; if phC > 2 * Float.pi { phC -= 2 * Float.pi }
+            let g = sGust
+            let flutter = 0.6 + 0.4 * sinf(phB) * sinf(phC + slow2 * 5)
+            let rustle = rainLP.tick(hissBP.tick(pink(w)).bp).lp * (0.15 + 0.85 * g) * (0.75 + 0.25 * flutter) * 2.2
+            let bed = windBP.tick(pink(w)).bp * 0.25 * (0.3 + 0.7 * g) + lowLP.tick(brownStep()).lp * 0.2
+            mono = rustle + bed
         default:
             mono = 0
         }

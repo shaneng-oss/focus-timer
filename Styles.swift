@@ -4,24 +4,17 @@
 import AppKit
 import QuartzCore
 
-enum FlipMode { case rotate, fade, shake }
+enum FlipMode { case rotate, fade }
 
 enum StyleKind: Int, CaseIterable {
-    case sand = 0, lava, water, candle, snow, zen
+    case sand = 0, lava, water, candle, snow, disc, horizon, tree
 
-    var title: String { ["Sand Hourglass", "Lava Lamp", "Water Clock", "Candle", "Snow Globe", "Zen Garden"][rawValue] }
-    var key: String { ["sand", "lava", "water", "candle", "snow", "zen"][rawValue] }
-    var noun: String { ["hourglass", "lamp", "water clock", "candle", "globe", "garden"][rawValue] }
-    /// What "flip" means for this style: turn the time already used into the new remaining time.
-    var flipTitle: String { ["Flip Hourglass", "Flip Lamp", "Swap the Vessels", "Swap the Candle", "Shake the Globe", "Turn the Basin"][rawValue] }
-    var flipMode: FlipMode {
-        switch self {
-        case .sand, .lava: return .rotate
-        case .snow: return .shake
-        default: return .fade
-        }
-    }
-    var symbol: String { ["hourglass", "lamp.floor", "drop", "flame", "snowflake", "leaf"][rawValue] }
+    var title: String { ["Sand Hourglass", "Lava Lamp", "Water Clock", "Candle", "Snow Globe", "Focus Disc", "Horizon", "Focus Tree"][rawValue] }
+    var key: String { ["sand", "lava", "water", "candle", "snow", "disc", "horizon", "tree"][rawValue] }
+    var noun: String { ["hourglass", "lamp", "water clock", "candle", "globe", "dial", "porthole", "tree"][rawValue] }
+    var symbol: String { ["hourglass", "lamp.floor", "drop", "flame", "snowflake", "timer", "sun.horizon", "tree"][rawValue] }
+    /// Only the hourglass is turned over; every other style starts a block with a quick cross-fade.
+    var canFlip: Bool { self == .sand }
     /// Sound kinds that belong to this style (the first one is the default).
     var sounds: [Int] {
         switch self {
@@ -30,14 +23,16 @@ enum StyleKind: Int, CaseIterable {
         case .water: return [10, 11]
         case .candle: return [12]
         case .snow: return [13]
-        case .zen: return [14]
+        case .disc: return [17]
+        case .horizon: return [18]
+        case .tree: return [19]
         }
     }
 }
 
-/// A one-off sound trigger from a simulation (a drop landing, a bamboo knock, a flame lighting).
+/// A one-off sound trigger from a simulation (a drop landing, a flame lighting, a shake).
 struct SoundEvent {
-    enum Kind: Int32 { case drop = 1, bloop, plip, light, extinguish, swish, tock, pour }
+    enum Kind: Int32 { case drop = 1, bloop, plip, light, extinguish, swish }
     var kind: Kind
     var a: Float = 0
     var b: Float = 0
@@ -55,10 +50,13 @@ protocol StyleModule: AnyObject {
     func feedSound(_ st: NoiseState, dt: CGFloat, running: Bool, previewPhase: Float?)
     /// The mouse over the object (in the object's own coordinates), or nil when it leaves.
     func pointer(_ p: CGPoint?, velocity: CGPoint)
+    /// Focus block or break: styles that tell them apart (the tree, the horizon) adjust here.
+    func setPhase(onBreak: Bool)
 }
 
 extension StyleModule {
     func pointer(_ p: CGPoint?, velocity: CGPoint) {}
+    func setPhase(onBreak: Bool) {}
 }
 
 // MARK: - Shared drawing helpers
@@ -73,6 +71,20 @@ extension StyleModule {
 
 func makeGradient(_ colors: [CGColor], _ locs: [CGFloat]) -> CGGradient {
     CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: locs)!
+}
+
+/// A bitmap of a small region, drawn in y-down coordinates with the origin at its top-left corner.
+func smallImage(_ size: CGSize, _ ps: CGFloat, _ body: (CGContext) -> Void) -> CGImage? {
+    let w = Int(ceil(size.width * ps)), h = Int(ceil(size.height * ps))
+    guard let c = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+    c.translateBy(x: 0, y: CGFloat(h))
+    c.scaleBy(x: ps, y: -ps)
+    let saved = NSGraphicsContext.current
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: c, flipped: true)
+    body(c)
+    NSGraphicsContext.current = saved
+    return c.makeImage()
 }
 
 func shapeLayer(fill: CGColor? = nil, stroke: CGColor? = nil, width: CGFloat = 1) -> CAShapeLayer {
@@ -311,11 +323,21 @@ func drawTaskLabel(_ ctx: CGContext, ui: UIState, centerX: CGFloat = L.cx, cente
              options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
 }
 
-/// The floating time badge beside the object: a frosted disc with a coloured ring and a pin.
-func drawBadge(_ ctx: CGContext, ui: UIState, accent: RGB) {
+/// Where the "+5 min" and "Break" pills sit under the badge once a block has ended.
+enum BadgeChoice {
+    static let plus = CGRect(x: L.bx - 24, y: L.by + L.badgeR + 8, width: 48, height: 13)
+    static let next = CGRect(x: L.bx - 24, y: L.by + L.badgeR + 25, width: 48, height: 13)
+}
+
+/// The floating time badge beside the object: a frosted disc with a progress ring and a pin. The
+/// ring is the time left, so any style reads at a glance; it warms as the end nears and turns cool
+/// on a break.
+func drawBadge(_ ctx: CGContext, ui: UIState, accent styleAccent: RGB) {
     let c = CGPoint(x: L.bx, y: L.by), r = L.badgeR
     let rect = CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)
     let circle = CGPath(ellipseIn: rect, transform: nil)
+    var accent = styleAccent
+    if ui.onBreak { accent = RGB(0.22, 0.62, 0.66) } else if ui.warn > 0.01 { accent = accent.mixed(RGB(0.98, 0.62, 0.16), 0.85 * ui.warn) }
     ctx.saveGState()
     ctx.setShadow(offset: CGSize(width: 0, height: -2), blur: 7, color: CGColor(gray: 0, alpha: 0.28))
     ctx.addPath(circle); ctx.setFillColor(RGB(0.93, 0.94, 0.96).cg(0.66)); ctx.fillPath()
@@ -324,6 +346,10 @@ func drawBadge(_ ctx: CGContext, ui: UIState, accent: RGB) {
     ctx.addPath(circle); ctx.clip()
     ctx.drawLinearGradient(makeGradient([CGColor(gray: 1, alpha: 0.4), CGColor(gray: 1, alpha: 0), CGColor(gray: 0, alpha: 0.05)], [0, 0.55, 1]),
                            start: CGPoint(x: 0, y: rect.minY), end: CGPoint(x: 0, y: rect.maxY), options: [])
+    if ui.warn > 0.01 {
+        ctx.drawRadialGradient(makeGradient([accent.cg(0.22 * ui.warn), accent.cg(0)], [0, 1]),
+                               startCenter: c, startRadius: 0, endCenter: c, endRadius: r, options: [])
+    }
     ctx.restoreGState()
     if ui.glow > 0.01 {
         ctx.saveGState()
@@ -331,7 +357,22 @@ func drawBadge(_ ctx: CGContext, ui: UIState, accent: RGB) {
         ctx.addPath(circle); ctx.setStrokeColor(accent.cg(0.9 * ui.glow)); ctx.setLineWidth(3); ctx.strokePath()
         ctx.restoreGState()
     }
-    ctx.addPath(circle); ctx.setStrokeColor(accent.cg(0.92)); ctx.setLineWidth(2.6); ctx.strokePath()
+    // Progress ring: a faint track, and the time left as a bright arc clockwise from 12 o'clock
+    ctx.addPath(circle); ctx.setStrokeColor(accent.cg(ui.done ? 0.92 : 0.2)); ctx.setLineWidth(2.6); ctx.strokePath()
+    let frac = ui.done ? 0 : max(0, min(1, ui.progress))
+    if frac > 0.002 {
+        let arc = CGMutablePath()
+        let n = max(2, Int(frac * 120))
+        for i in 0...n {
+            let t = -.pi / 2 + 2 * .pi * frac * CGFloat(i) / CGFloat(n)
+            let p = CGPoint(x: c.x + cos(t) * r, y: c.y + sin(t) * r)
+            if i == 0 { arc.move(to: p) } else { arc.addLine(to: p) }
+        }
+        ctx.saveGState()
+        ctx.setLineCap(.round)
+        ctx.addPath(arc); ctx.setStrokeColor(accent.cg(0.97)); ctx.setLineWidth(3); ctx.strokePath()
+        ctx.restoreGState()
+    }
     ctx.addEllipse(in: rect.insetBy(dx: 2.6, dy: 2.6)); ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.5)); ctx.setLineWidth(0.8); ctx.strokePath()
     let pin = CGPoint(x: c.x, y: c.y - r)
     ctx.saveGState()
@@ -340,11 +381,31 @@ func drawBadge(_ ctx: CGContext, ui: UIState, accent: RGB) {
     ctx.restoreGState()
     ctx.setFillColor(CGColor(gray: 1, alpha: 0.65)); ctx.fillEllipse(in: CGRect(x: pin.x - 1.7, y: pin.y - 2.3, width: 2.4, height: 1.7))
     let ink = RGB(0.21, 0.23, 0.27)
-    if ui.task.isEmpty {
+    let top = ui.onBreak ? ui.ringLabel : ui.task
+    if top.isEmpty {
         drawTimeLabel(ctx, ui: ui, centerX: c.x, centerY: c.y + 0.5, size: 12.5, color: ink)
     } else {
-        drawTaskLabel(ctx, ui: ui, centerX: c.x, centerY: c.y - 8, width: r * 2 - 12, size: 6.8, color: ink)
+        var u = ui
+        u.task = top
+        drawTaskLabel(ctx, ui: u, centerX: c.x, centerY: c.y - 8, width: r * 2 - 12, size: 6.8, color: ui.onBreak ? accent.scaled(0.8) : ink)
         drawTimeLabel(ctx, ui: ui, centerX: c.x, centerY: c.y + 4.5, size: 12, color: ink)
+    }
+    if ui.choices {
+        func pill(_ rc: CGRect, _ text: String, filled: Bool) {
+            let p = CGPath(roundedRect: rc, cornerWidth: rc.height / 2, cornerHeight: rc.height / 2, transform: nil)
+            ctx.saveGState()
+            ctx.setShadow(offset: CGSize(width: 0, height: -1), blur: 3, color: CGColor(gray: 0, alpha: 0.25))
+            ctx.addPath(p); ctx.setFillColor(filled ? accent.cg(0.95) : RGB(0.95, 0.96, 0.97).cg(0.9)); ctx.fillPath()
+            ctx.restoreGState()
+            ctx.addPath(p); ctx.setStrokeColor(accent.cg(0.9)); ctx.setLineWidth(1); ctx.strokePath()
+            let str = NSAttributedString(string: text, attributes: [
+                .font: NSFont.systemFont(ofSize: 7, weight: .semibold),
+                .foregroundColor: NSColor(cgColor: filled ? CGColor(gray: 1, alpha: 0.97) : ink.cg(0.95))!])
+            let ts = str.size()
+            str.draw(at: CGPoint(x: rc.midX - ts.width / 2, y: rc.midY - ts.height / 2))
+        }
+        pill(BadgeChoice.plus, "+5 min", filled: false)
+        pill(BadgeChoice.next, ui.choiceTitle, filled: true)
     }
 }
 

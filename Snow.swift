@@ -593,7 +593,7 @@ final class SnowModule: StyleModule {
         for l in [back, front, surface, motes, flakes, pile.mask, insideMask] { l.contentsScale = ps }
         let bk = "\(ui.frame.name)|\(ps)|\((ui.shadow * 10).rounded())|\(r.sky.name)"
         if bk != backKey { backKey = bk; back.contents = layerImage(ps) { r.drawBack($0, ui: ui) } }
-        let fk = "\(ui.frame.name)|\(ps)|\(ui.time)|\(ui.paused)|\(ui.dimTime)|\(ui.task)|\((ui.glow * 50).rounded())"
+        let fk = "\(ps)|" + ui.frontKey
         if fk != frontKey { frontKey = fk; front.contents = layerImage(ps) { r.drawFront($0, ui: ui) } }
         pile.set(path: r.pilePath())
         surface.path = flipY(r.surfaceLine())

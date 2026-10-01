@@ -575,12 +575,16 @@ final class NoiseState {
                         "Live Hourglass · follows the sand", "Close-up Trickle · fine, follows the sand", "Grains on Glass · bright, steady",
                         "Big Hourglass · deep, follows the sand",
                         "Lava Lamp · warm hum", "Water Clock · follows the drops", "Cave Drips · echoing",
-                        "Candle Flame · soft flutter", "Winter Hush · soft wind", "Zen Garden · stream and tock",
-                        "Gentle Rain · soft patter", "Fireplace · soft crackle"]
-    static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.83, 0.85, 0.36, 0.40, 0.17, 0.405, 0.61]
+                        "Candle Flame · soft flutter", "Winter Hush · soft wind", "White Noise · even and bright",
+                        "Gentle Rain · soft patter", "Fireplace · soft crackle",
+                        "Clockwork · soft movement", "Evening Air · breeze and far surf", "Leaves · soft rustle"]
+    static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.83, 0.85, 0.36, 0.40, 0.36, 0.405, 0.61, 0.18, 0.21, 0.33]
     static let liveKinds: Set<Int> = [5, 6, 8]
     static let hourglassKinds = [5, 6, 7, 8]
-    static let ambientKinds = [1, 2, 3, 4, 15, 16]
+    /// Steady sounds for focus (nothing in them to pull attention), and textured ones better kept for breaks.
+    static let steadyKinds = [14, 1, 2, 4]
+    static let texturedKinds = [3, 15, 16]
+    static let ambientKinds = steadyKinds + texturedKinds
 
     // Sounds for the other styles live in Audio2.swift; simulations post one-off events here.
     let ex = ExtraSynth()
@@ -618,6 +622,8 @@ final class NoiseState {
     var gain: Float = 0
     var swap: Float = 1
     var volume: Float = 0.5
+    var duck: Float = 0                  // 0...1: softened in the last minutes of a block
+    private var sDuck: Float = 0, sVol: Float = -1
     var rng = RNG(s: 0x5DEE_CE66_D123_4567)
     var cl = NoiseChannel(), cr = NoiseChannel()
     var phase: Float = 0, period: Float = 9
@@ -731,9 +737,12 @@ final class NoiseState {
     }
 
     func render(_ l: UnsafeMutablePointer<Float>, _ r: UnsafeMutablePointer<Float>, _ n: Int) {
-        let vol = pow(max(0, volume), 1.5)
+        let volT = pow(max(0, volume), 1.5)
+        if sVol < 0 { sVol = volT }
         drainEvents()
         for i in 0..<n {
+            sVol += (volT - sVol) * 0.0001
+            sDuck += (duck - sDuck) * 0.00002
             gain += (target - gain) * 0.00004
             if pending != kind {
                 if gain < 0.001 {
@@ -762,7 +771,7 @@ final class NoiseState {
                 a = sample(&cl, white(), env)
                 b = sample(&cr, white(), env)
             }
-            let g = gain * swap * vol * NoiseState.norm[kind]
+            let g = gain * swap * sVol * NoiseState.norm[kind] * (1 - 0.35 * sDuck)
             l[i] = a * g
             r[i] = b * g
         }
@@ -855,6 +864,16 @@ struct UIState {
     var shadow: CGFloat
     var running = false
     var done = false
+    var progress: CGFloat = 1        // share of the block still to go (the badge ring)
+    var warn: CGFloat = 0            // 0...1 as the end approaches: the badge warms, the sound softens
+    var onBreak = false
+    var ringLabel = ""               // "Break" / "Long break", shown above the time on a break
+    var choices = false              // the "+5 min" / "Break" pills under the badge
+    var choiceTitle = "Break"
+    /// Everything the cached front layer (badge and labels) depends on.
+    var frontKey: String {
+        "\(frame.name)|\(time)|\(paused)|\(dimTime)|\(task)|\((glow * 50).rounded())|\((progress * 400).rounded())|\((warn * 20).rounded())|\(onBreak)|\(ringLabel)|\(choices)|\(choiceTitle)|\(done)"
+    }
 }
 
 // MARK: - Renderer
@@ -1761,6 +1780,17 @@ final class LavaRenderer {
         ctx.addPath(sheen[0]); ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.24)); ctx.setLineWidth(3.2); ctx.strokePath()
         ctx.addPath(sheen[1]); ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.12)); ctx.setLineWidth(1.4); ctx.strokePath()
         ctx.setLineJoin(.round)
+        // Faint level marks etched on the glass, so the wax can be read like a gauge
+        ctx.setLineCap(.butt)
+        for k in [0.25, 0.5, 0.75] as [CGFloat] {
+            let y = LL.top + (LL.bottom - LL.top) * k
+            let x1 = L.cx + LL.half(y) - 1.5
+            ctx.move(to: CGPoint(x: x1 - (k == 0.5 ? 9 : 6), y: y)); ctx.addLine(to: CGPoint(x: x1, y: y))
+            ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.28)); ctx.setLineWidth(1); ctx.strokePath()
+            ctx.move(to: CGPoint(x: x1 - (k == 0.5 ? 9 : 6), y: y + 1)); ctx.addLine(to: CGPoint(x: x1, y: y + 1))
+            ctx.setStrokeColor(CGColor(gray: 0, alpha: 0.12)); ctx.setLineWidth(0.8); ctx.strokePath()
+        }
+        ctx.setLineCap(.round)
         ctx.addPath(outline); ctx.setStrokeColor(CGColor(gray: 0, alpha: 0.30)); ctx.setLineWidth(2.4); ctx.strokePath()
         ctx.addPath(outline); ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.55)); ctx.setLineWidth(1.0); ctx.strokePath()
         fresnelRim(ctx, outline, width: 6, alpha: 0.14)
@@ -1891,7 +1921,7 @@ final class LavaScene {
         let sk = r.style.name
         let bk = "\(sk)|\(ps)|\((ui.shadow * 10).rounded())"
         if bk != backKey { backKey = bk; back.contents = layerImage(ps) { r.drawBack($0, ui: ui) } }
-        let fk = "\(sk)|\(ui.frame.name)|\(ps)|\(ui.time)|\(ui.paused)|\(ui.dimTime)|\(ui.task)|\((ui.glow * 50).rounded())"
+        let fk = "\(sk)|\(ps)|" + ui.frontKey
         if fk != frontKey { frontKey = fk; front.contents = layerImage(ps) { r.drawFront($0, ui: ui) } }
         if sk != styleKey {
             styleKey = sk
@@ -1959,6 +1989,11 @@ final class Settings {
     func setSound(_ v: Int, for k: StyleKind) { d.set(v, forKey: k == .sand ? "sound" : "sound_" + k.key) }
     var volume: Double { get { d.object(forKey: "volume") as? Double ?? 0.5 } set { d.set(newValue, forKey: "volume") } }
     var soundOnlyRunning: Bool { get { d.object(forKey: "soundOnlyRunning") as? Bool ?? true } set { d.set(newValue, forKey: "soundOnlyRunning") } }
+    var breakMinutes: Double { get { d.object(forKey: "breakMinutes") as? Double ?? 5 } set { d.set(newValue, forKey: "breakMinutes") } }
+    var longBreakMinutes: Double { get { d.object(forKey: "longBreakMinutes") as? Double ?? 15 } set { d.set(newValue, forKey: "longBreakMinutes") } }
+    var longEvery: Int { get { d.object(forKey: "longEvery") as? Int ?? 4 } set { d.set(newValue, forKey: "longEvery") } }
+    var autoBreak: Bool { get { d.object(forKey: "autoBreak") as? Bool ?? true } set { d.set(newValue, forKey: "autoBreak") } }
+    var warnMinutes: Double { get { d.object(forKey: "warnMinutes") as? Double ?? 5 } set { d.set(newValue, forKey: "warnMinutes") } }
     var origin: NSPoint? {
         get { guard let a = d.array(forKey: "origin") as? [Double], a.count == 2 else { return nil }; return NSPoint(x: a[0], y: a[1]) }
         set { if let p = newValue { d.set([Double(p.x), Double(p.y)], forKey: "origin") } }
@@ -2027,7 +2062,7 @@ final class Scene {
             backKey = bk
             back.contents = r.image(ps) { r.drawBack($0, ui: ui) }
         }
-        let fk = "\(ui.frame.name)|\(ps)|\(ui.time)|\(ui.paused)|\(ui.dimTime)|\(ui.task)|\((ui.glow * 50).rounded())"
+        let fk = "\(ps)|" + ui.frontKey
         if fk != frontKey {
             frontKey = fk
             front.contents = r.image(ps) { r.drawFront($0, ui: ui) }
@@ -2089,7 +2124,7 @@ final class HourglassView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         if dragged { app?.savePosition(); return }
-        if event.clickCount == 2 { app?.flip() } else if event.clickCount == 1 { app?.toggle() }
+        if event.clickCount == 2 { app?.doubleClick() } else if event.clickCount == 1 { app?.click(at: convert(event.locationInWindow, from: nil)) }
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -2157,12 +2192,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .water: m = WaterModule()
         case .candle: m = CandleModule()
         case .snow: m = SnowModule()
-        case .zen: m = ZenModule()
+        case .disc: m = DiscModule()
+        case .horizon: m = HorizonModule()
+        case .tree: m = TreeModule()
         }
         m.colourIndex = min(max(settings.colour(for: k), 0), m.colours.count - 1)
+        m.setPhase(onBreak: phase != .focus)
         m.body.configure(forSeconds: seconds)
         modules[k.rawValue] = m
         return m
+    }
+    override init() {
+        super.init()
+        blockSeconds = settings.minutes * 60
     }
     var current: StyleModule { module(styleKind) }
     /// Whatever is keeping time right now: sand, wax, water, a candle, snow or a garden.
@@ -2170,6 +2212,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var soundKind: Int { settings.sound(for: styleKind) }
     var flipMode: FlipMode = .rotate
     var flipDone = false
+    /// Focus blocks alternate with breaks; a long one comes round every few blocks.
+    enum Phase { case focus, shortBreak, longBreak }
+    var phase: Phase = .focus
+    var blocksDone = 0
+    var blockSeconds: Double = 25 * 60
+    var warnLevel: CGFloat = 0
+    var choicesUntil: Double = 0          // while a focus block has just ended: when the break starts by itself
+    var breakEndedAt: Double?
+    var startAfterTransition = true
+    var transitionResets = false
+    static let checkInSeconds = 12.0
     let noise = NoisePlayer()
     var state = RunState.idle {
         didSet { if oldValue != state { updateStatusTitle(); syncSound() } }
@@ -2192,7 +2245,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var scale: CGFloat { CGFloat(settings.scaleValue) }
     var texPS: CGFloat = 0
     var texWork: DispatchWorkItem?
-    var seconds: Double { settings.minutes * 60 }
+    var seconds: Double { blockSeconds }
     var rate: CGFloat { body.totalMass / CGFloat(seconds) }
     var remaining: Double { Double(max(0, body.topMass / rate)) }
 
@@ -2219,7 +2272,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         view.wantsLayer = true
         view.layer?.addSublayer(current.container)
         view.autoresizingMask = [.width, .height]
-        view.toolTip = "Click: start / pause\nDouble-click: flip (time used becomes time left)\nScroll: set minutes\n⌥ scroll: resize\nRight-click: options"
+        view.toolTip = "Click: start / pause\nScroll: set minutes\n⌥ scroll: resize\nRight-click: options"
         panel.contentView = view
         panel.orderFrontRegardless()
 
@@ -2281,7 +2334,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var draw = forceDraw
         forceDraw = false
         if let t0 = flipT {
-            let dur: Double = flipMode == .rotate ? 0.75 : (flipMode == .shake ? 0.9 : 0.6)
+            let dur: Double = flipMode == .rotate ? 0.75 : 0.6
             let t = min(1, t0 + dt / dur)
             switch flipMode {
             case .rotate:
@@ -2289,12 +2342,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .fade:
                 current.container.opacity = Float(abs(cos(.pi * t)))
                 if t >= 0.5 && !flipDone {
-                    flipDone = true; body.flip()
+                    flipDone = true; swapBody()
                     if debugTiming { FileHandle.standardError.write("swap \(CACurrentMediaTime() - launchTime) opacity \(current.container.opacity)\n".data(using: .utf8)!) }
                 }
-            case .shake:
-                flipAngle = CGFloat(sin(t * 5 * .pi) * 0.11 * (1 - t))
-                if t >= 0.45 && !flipDone { flipDone = true; body.flip() }
             }
             if t >= 1 { finishFlip() } else { flipT = t }
             draw = true
@@ -2310,14 +2360,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let pv: Float? = now2 < previewUntil ? Float(min(1, max(0, (now2 - (previewUntil - 4)) / 4))) : nil
             current.feedSound(noise.st, dt: pdt, running: state == .running || state == .finishing, previewPhase: pv)
             if state == .running && body.topMass < 1e-3 { state = .finishing }
-            if state == .finishing && !body.inFlight {
-                state = .done
-                doneAt = now
-                if settings.chime { NSSound(named: NSSound.Name("Glass"))?.play() }
-            }
+            if state == .finishing && !body.inFlight { blockEnded(now) }
             if body.busy { draw = true }
         }
         if let d = doneAt, now - d < 9 { draw = true }
+        // The gentle warning: ramps in over a few seconds once the last minutes begin
+        let warnWant: CGFloat = (state == .running || state == .finishing) && phase == .focus && settings.warnMinutes > 0
+            && remaining <= settings.warnMinutes * 60 ? 1 : 0
+        if abs(warnWant - warnLevel) > 0.0005 {
+            warnLevel += (warnWant - warnLevel) * min(1, dt / 5)
+            if abs(warnWant - warnLevel) < 0.002 { warnLevel = warnWant }
+            noise.st.duck = Float(warnLevel)
+            draw = true
+        }
+        if state == .done && phase == .focus && settings.autoBreak && choicesUntil > 0 && now >= choicesUntil { startBreak() }
+        if state == .done, let e = breakEndedAt, now - e > 2.5 { breakEndedAt = nil; beginBlock(seconds: settings.minutes * 60, phase: .focus, start: false) }
         if abs(hoverTiltTarget - hoverTilt) > 0.0004 {
             hoverTilt += (hoverTiltTarget - hoverTilt) * min(1, dt * 5)
             draw = true
@@ -2381,10 +2438,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let t = CACurrentMediaTime() - d
             glow = t < 9 ? CGFloat((0.55 + 0.45 * sin(t * 4)) * max(0, 1 - t / 9)) : 0
         }
+        let total = body.totalMass
         return UIState(time: timeText(), paused: state == .paused, dimTime: state == .idle || state == .paused,
                        task: settings.task, frame: frameStyles[settings.frame], glow: glow,
                        shadow: CGFloat(max(0, cos(Double(flipAngle)))), running: state == .running || state == .finishing,
-                       done: state == .done)
+                       done: state == .done, progress: total > 0 ? body.topMass / total : 0, warn: warnLevel, onBreak: phase != .focus,
+                       ringLabel: phase == .longBreak ? "Long break" : "Break",
+                       choices: state == .done && phase == .focus && flipT == nil,
+                       choiceTitle: settings.autoBreak ? "Break" : "Again")
     }
 
     func updateStatusIcon() {
@@ -2399,8 +2460,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let b = status?.button else { return }
         switch state {
         case .idle: b.title = ""
-        case .running, .finishing: b.title = " " + timeText()
-        case .paused: b.title = " ❚❚ " + timeText()
+        case .running, .finishing: b.title = (phase == .focus ? " " : " Break ") + timeText()
+        case .paused: b.title = (phase == .focus ? " ❚❚ " : " ❚❚ Break ") + timeText()
         case .done: b.title = " Done"
         }
     }
@@ -2426,61 +2487,147 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .idle, .paused: state = body.topMass > 1e-3 ? .running : .done
         case .running: state = .paused
         case .finishing: break
-        case .done: flip()
+        case .done: if phase == .focus { if settings.autoBreak { startBreak() } else { startAgain() } }
         }
         forceDraw = true
     }
 
-    @objc func flip() {
-        guard flipT == nil else { return }
-        body.landAll()
-        flipMode = styleKind.flipMode
-        flipDone = false
-        restFrame = panel.frame
-        if flipMode != .fade {
-            let side = ceil(hypot(L.width, L.height) * scale) + 4
-            panel.setFrame(NSRect(x: restFrame.midX - side / 2, y: restFrame.midY - side / 2, width: side, height: side), display: false)
+    /// Window coordinates to the timer's own (unscaled, y-down) coordinates.
+    func toLocal(_ v: CGPoint) -> CGPoint {
+        CGPoint(x: (v.x - view.bounds.midX) / scale + L.width / 2, y: (v.y - view.bounds.midY) / scale + L.height / 2)
+    }
+
+    /// A click on the timer: the pills under the badge when a block has just ended, otherwise start / pause.
+    func click(at v: CGPoint) {
+        let p = toLocal(v)
+        if state == .done && phase == .focus && flipT == nil {
+            if BadgeChoice.plus.insetBy(dx: -3, dy: -3).contains(p) { extend(); return }
+            if BadgeChoice.next.insetBy(dx: -3, dy: -3).contains(p) { if settings.autoBreak { startBreak() } else { startAgain() }; return }
         }
-        if flipMode == .shake { noise.st.post(SoundEvent(kind: .swish)) }
-        flipT = 0
-        doneAt = nil
-        if debugTiming { FileHandle.standardError.write("flip start \(CACurrentMediaTime() - launchTime)\n".data(using: .utf8)!) }
+        toggle()
+    }
+
+    func doubleClick() { if styleKind.canFlip { flip() } }
+
+    /// Turn the hourglass over: the time already used becomes the time left. Only the hourglass flips.
+    @objc func flip() {
+        guard flipT == nil, styleKind.canFlip else { return }
+        body.landAll()
+        transitionResets = false
+        startAfterTransition = true
+        doneAt = nil; choicesUntil = 0; breakEndedAt = nil
+        beginTransition(.rotate)
     }
     let launchTime = CACurrentMediaTime()
     let debugTiming = CommandLine.arguments.contains("--debug-timing")
 
+    private func beginTransition(_ mode: FlipMode) {
+        flipMode = mode
+        flipDone = false
+        restFrame = panel.frame
+        if mode == .rotate {
+            let side = ceil(hypot(L.width, L.height) * scale) + 4
+            panel.setFrame(NSRect(x: restFrame.midX - side / 2, y: restFrame.midY - side / 2, width: side, height: side), display: false)
+        }
+        flipT = 0
+        if debugTiming { FileHandle.standardError.write("flip start \(CACurrentMediaTime() - launchTime)\n".data(using: .utf8)!) }
+    }
+
+    /// Half-way through a transition: a fresh block resets the object, a flip turns it over.
+    private func swapBody() { if transitionResets { body.reset() } else { body.flip() } }
+
     func finishFlip() {
-        if !flipDone { body.flip() }
+        if !flipDone { swapBody() }
         flipT = nil
         flipAngle = 0
         current.container.opacity = 1
         panel.setFrame(restFrame, display: true)
-        state = body.topMass > 1e-3 ? .running : .done
+        state = startAfterTransition ? (body.topMass > 1e-3 ? .running : .done) : .idle
         forceDraw = true
+    }
+
+    /// Start a block (focus or break) of `s` seconds. The object resets through its transition, the
+    /// hourglass by turning over, the others with a cross-fade; `start` false leaves it ready, not running.
+    func beginBlock(seconds s: Double, phase p: Phase, start: Bool) {
+        guard flipT == nil else { return }
+        phase = p
+        blockSeconds = s
+        for m in modules.values { m.body.configure(forSeconds: s); m.setPhase(onBreak: p != .focus) }
+        doneAt = nil
+        choicesUntil = 0
+        breakEndedAt = nil
+        warnLevel = 0
+        noise.st.duck = 0
+        startAfterTransition = start
+        transitionResets = true
+        let fresh = body.topMass >= body.totalMass - 1e-6 && !body.inFlight
+        if fresh {
+            state = start ? .running : .idle
+            updateStatusTitle()
+            forceDraw = true
+            return
+        }
+        body.landAll()
+        beginTransition(styleKind.canFlip ? .rotate : .fade)
+    }
+
+    /// A focus block or a break has run out.
+    func blockEnded(_ now: Double) {
+        state = .done
+        doneAt = now
+        if settings.chime { NSSound(named: NSSound.Name("Glass"))?.play() }
+        if phase == .focus {
+            blocksDone += 1
+            choicesUntil = settings.autoBreak ? now + AppController.checkInSeconds : .greatestFiniteMagnitude
+        } else {
+            breakEndedAt = now
+        }
+    }
+
+    func startBreak() {
+        let long = settings.longEvery > 0 && blocksDone > 0 && blocksDone % settings.longEvery == 0
+        beginBlock(seconds: (long ? settings.longBreakMinutes : settings.breakMinutes) * 60, phase: long ? .longBreak : .shortBreak, start: true)
+    }
+    @objc func startBreakNow() { if state != .idle { startBreak() } }
+    @objc func startAgain() { beginBlock(seconds: settings.minutes * 60, phase: .focus, start: true) }
+    @objc func endBreak() { if phase != .focus { beginBlock(seconds: settings.minutes * 60, phase: .focus, start: false) } }
+    /// "+5 min": a short run on from the block that just ended, for when the work is flowing.
+    @objc func extend() {
+        guard state == .done, phase == .focus else { return }
+        blocksDone = max(0, blocksDone - 1)
+        beginBlock(seconds: 300, phase: .focus, start: true)
     }
 
     @objc func reset() {
         if flipT != nil { return }
+        phase = .focus
+        blockSeconds = settings.minutes * 60
+        for m in modules.values { m.body.configure(forSeconds: blockSeconds); m.setPhase(onBreak: false) }
         body.reset()
         state = .idle
-        doneAt = nil
+        doneAt = nil; choicesUntil = 0; breakEndedAt = nil
+        warnLevel = 0; noise.st.duck = 0
         forceDraw = true
     }
 
     func startFresh(minutes: Double) {
         settings.minutes = minutes
-        for m in modules.values { m.body.configure(forSeconds: seconds) }
-        reset()
-        state = .running
+        beginBlock(seconds: minutes * 60, phase: .focus, start: true)
     }
 
     func nudgeMinutes(_ d: Int) {
-        guard state == .idle || state == .done, flipT == nil else { return }
+        guard (state == .idle || state == .done) && phase == .focus, flipT == nil else { return }
         if state == .done { reset() }
         settings.minutes = min(180, max(1, settings.minutes.rounded() + Double(d)))
+        blockSeconds = settings.minutes * 60
         for m in modules.values { m.body.configure(forSeconds: seconds) }
         forceDraw = true
     }
+
+    @objc func toggleAutoBreak() { settings.autoBreak.toggle() }
+    @objc func pickBreak(_ item: NSMenuItem) { settings.breakMinutes = Double(item.tag) }
+    @objc func pickLongEvery(_ item: NSMenuItem) { settings.longEvery = item.tag }
+    @objc func pickWarn(_ item: NSMenuItem) { settings.warnMinutes = Double(item.tag) }
 
     @objc func pickDuration(_ item: NSMenuItem) { startFresh(minutes: Double(item.tag)) }
 
@@ -2528,6 +2675,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         current.container.removeFromSuperlayer()
         settings.style = k.rawValue
         let m = current
+        m.setPhase(onBreak: phase != .focus)
         m.body.configure(forSeconds: seconds)
         m.body.reset()
         if spent > 0 { m.body.catchUp(spent * m.body.totalMass); m.body.landAll() }
@@ -2643,23 +2791,38 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func populate(_ m: NSMenu) {
-        let head = NSMenuItem(title: state == .idle ? "Ready · \(fmt(remaining))" : "\(timeText()) left", action: nil, keyEquivalent: "")
-        if state == .done { head.title = "Time's up" }
-        head.isEnabled = false
-        m.addItem(head)
-        let primary: String
-        switch state {
-        case .idle: primary = "Start"
-        case .running, .finishing: primary = "Pause"
-        case .paused: primary = "Resume"
-        case .done: primary = "\(styleKind.flipTitle) & Start Again"
+        func header(_ t: String) -> NSMenuItem {
+            let h = NSMenuItem(title: t, action: nil, keyEquivalent: "")
+            h.isEnabled = false
+            return h
         }
-        m.addItem(item(primary, #selector(toggle)))
-        m.addItem(item(styleKind.flipTitle, #selector(flip)))
+        let onBreak = phase != .focus
+        let headTitle: String
+        switch state {
+        case .idle: headTitle = "Ready · \(fmt(remaining))" + (blocksDone > 0 ? " · block \(blocksDone + 1) next" : "")
+        case .done: headTitle = onBreak ? "Break over" : "Time's up · block \(blocksDone) done"
+        default: headTitle = onBreak ? "\(phase == .longBreak ? "Long break" : "Break") · \(timeText()) left" : "\(timeText()) left · block \(blocksDone + 1)"
+        }
+        m.addItem(header(headTitle))
+        switch state {
+        case .idle: m.addItem(item("Start", #selector(toggle)))
+        case .running, .finishing: m.addItem(item(onBreak ? "Pause Break" : "Pause", #selector(toggle)))
+        case .paused: m.addItem(item("Resume", #selector(toggle)))
+        case .done:
+            if !onBreak {
+                m.addItem(item(settings.autoBreak ? "Start the Break Now" : "Start Again", #selector(toggle)))
+                m.addItem(item("+5 Minutes", #selector(extend)))
+                if settings.autoBreak { m.addItem(item("Skip the Break, Start Again", #selector(startAgain))) }
+                else { m.addItem(item("Take a Break", #selector(startBreakNow))) }
+            }
+        }
+        if (state == .running || state == .paused) && !onBreak { m.addItem(item("Skip to the Break", #selector(startBreakNow))) }
+        if (state == .running || state == .paused) && onBreak { m.addItem(item("End the Break", #selector(endBreak))) }
+        if styleKind.canFlip { m.addItem(item("Flip Hourglass", #selector(flip))) }
         m.addItem(item("Reset", #selector(reset)))
         m.addItem(.separator())
 
-        var durs = [5, 10, 15, 20, 25, 30, 45, 50, 60, 90].map { mins in
+        var durs = [10, 15, 20, 25, 30, 45, 50, 60, 90].map { mins in
             item(mins == 25 ? "25 min · Pomodoro" : "\(mins) min", #selector(pickDuration(_:)), tag: mins,
                  on: abs(settings.minutes - Double(mins)) < 0.01)
         }
@@ -2667,19 +2830,28 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         durs.append(item("Custom…", #selector(customDuration)))
         m.addItem(submenu("Start a Timer", durs))
         m.addItem(item(settings.task.isEmpty ? "Set Focus Task…" : "Focus Task: \(settings.task)…", #selector(setTask)))
+        var breaks: [NSMenuItem] = [item("Break After Each Block", #selector(toggleAutoBreak), on: settings.autoBreak), .separator(), header("Break length")]
+        breaks += [3, 5, 10, 15].map { item("\($0) min", #selector(pickBreak(_:)), tag: $0, on: abs(settings.breakMinutes - Double($0)) < 0.01) }
+        breaks += [.separator(), header("Long break (\(Int(settings.longBreakMinutes)) min)")]
+        breaks += [(0, "Off"), (2, "Every 2nd block"), (3, "Every 3rd block"), (4, "Every 4th block")].map {
+            item($0.1, #selector(pickLongEvery(_:)), tag: $0.0, on: settings.longEvery == $0.0)
+        }
+        m.addItem(submenu("Breaks", breaks))
+        var warns: [NSMenuItem] = [header("The badge warms and the sound softens")]
+        warns += [(0, "Off"), (2, "2 min before the end"), (5, "5 min before the end"), (10, "10 min before the end")].map {
+            item($0.1, #selector(pickWarn(_:)), tag: $0.0, on: Int(settings.warnMinutes) == $0.0)
+        }
+        m.addItem(submenu("Gentle Warning", warns))
         m.addItem(.separator())
 
-        func header(_ t: String) -> NSMenuItem {
-            let h = NSMenuItem(title: t, action: nil, keyEquivalent: "")
-            h.isEnabled = false
-            return h
-        }
         let chosen = soundKind
         func soundItem(_ k: Int) -> NSMenuItem { item(NoiseState.names[k], #selector(pickSound(_:)), tag: k, on: k == chosen) }
         var sounds = [soundItem(0), .separator(), header(styleKind.title)]
         sounds += styleKind.sounds.map(soundItem)
-        sounds += [.separator(), header("Ambient")]
-        sounds += NoiseState.ambientKinds.map(soundItem)
+        sounds += [.separator(), header("Steady · best for focus")]
+        sounds += NoiseState.steadyKinds.map(soundItem)
+        sounds += [.separator(), header("Textured · nicer on a break")]
+        sounds += NoiseState.texturedKinds.map(soundItem)
         sounds.append(.separator())
         sounds.append(item("Only While Timer Runs", #selector(toggleSoundOnlyRunning), on: settings.soundOnlyRunning))
         sounds.append(.separator())
@@ -2706,9 +2878,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }))
         var sizes = sizeOptions.enumerated().map { i, s in item(s.0, #selector(pickSize(_:)), tag: i, on: abs(scale - s.1) < 0.01) }
         sizes.append(.separator())
-        let hint = NSMenuItem(title: "Any size: hold ⌥ and scroll on the timer", action: nil, keyEquivalent: "")
-        hint.isEnabled = false
-        sizes.append(hint)
+        sizes.append(header("Any size: hold ⌥ and scroll on the timer"))
         m.addItem(submenu("Size", sizes))
         m.addItem(item("Chime When Done", #selector(toggleChime), on: settings.chime))
         m.addItem(item("Keep on Top", #selector(toggleOnTop), on: settings.onTop))
@@ -2887,9 +3057,13 @@ func renderStylePNG(path: String, style: Int, progress: Double, minutes: Double,
     case .water: m = WaterModule()
     case .candle: m = CandleModule()
     case .snow: m = SnowModule()
-    case .zen: m = ZenModule()
+    case .disc: m = DiscModule()
+    case .horizon: m = HorizonModule()
+    case .tree: m = TreeModule()
     }
     m.colourIndex = min(max(colour, 0), m.colours.count - 1)
+    let onBreak = argValue("--phase") == "break"
+    m.setPhase(onBreak: onBreak)
     let duration = minutes * 60
     m.body.configure(forSeconds: duration)
     m.body.reset()
@@ -2922,7 +3096,9 @@ func renderStylePNG(path: String, style: Int, progress: Double, minutes: Double,
     let s = Int(ceil(Double(m.body.topMass / rate)))
     m.still(ctx, ui: UIState(time: progress >= 1 ? "Done" : String(format: "%02d:%02d", s / 60, s % 60), paused: false,
                              dimTime: !lit, task: "Deep work", frame: frameStyles[frameIndex], glow: 0, shadow: 1,
-                             running: lit && progress < 1, done: progress >= 1))
+                             running: lit && progress < 1, done: progress >= 1, progress: CGFloat(max(0, 1 - progress)),
+                             warn: CGFloat(Double(argValue("--warn") ?? "0") ?? 0), onBreak: onBreak, ringLabel: "Break",
+                             choices: args.contains("--choices")))
     NSGraphicsContext.current = nil
     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
 }
@@ -2948,9 +3124,6 @@ func soundDemo(_ path: String, kind: Int, seconds: Int = 16) {
             case 12: if tick == 3 { st.post(SoundEvent(kind: .light)) }; if tick == (seconds - 3) * 10 { st.post(SoundEvent(kind: .extinguish)); st.ex.inFlow = 0 }
                 st.ex.inGust = tick % 40 < 8 ? 0.8 : 0.1
             case 13: st.ex.inAir = 1 - t / Float(seconds); if tick == 5 { st.post(SoundEvent(kind: .swish)) }
-            case 14: st.ex.inFill = (t.truncatingRemainder(dividingBy: 7)) / 7
-                if tick % 70 == 0 && tick > 0 { st.post(SoundEvent(kind: .pour, a: 1)) }
-                if tick % 70 == 15 && tick > 15 { st.post(SoundEvent(kind: .tock)) }
             default: break
             }
         }
@@ -2995,9 +3168,6 @@ func noiseTest() {
                 case 10: if tick % 23 == 5 { st.post(SoundEvent(kind: .drop, a: t / 20, b: 1)) }
                 case 12: if tick == 5 { st.post(SoundEvent(kind: .light)) }
                 case 13: st.ex.inAir = 1 - t / 20; if tick == 30 { st.post(SoundEvent(kind: .swish)) }
-                case 14: st.ex.inFill = (t.truncatingRemainder(dividingBy: 8)) / 8
-                    if tick % 80 == 0 && tick > 0 { st.post(SoundEvent(kind: .pour, a: 1)) }
-                    if tick % 80 == 15 && tick > 15 { st.post(SoundEvent(kind: .tock)) }
                 default: break
                 }
                 st.render(l + i, r + i, m)
