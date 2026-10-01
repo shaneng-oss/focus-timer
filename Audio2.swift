@@ -171,7 +171,7 @@ final class ExtraSynth {
         case 14: lowLP = SVF(7500, 0.55, sr); room = 0
         case 17: bedLP = SVF(130, 2.2, sr); hissBP = SVF(900, 1.6, sr); lowLP = SVF(60, 0.7, sr); room = 0.08
         case 18: windBP = SVF(380, 2.0, sr); lowLP = SVF(140, 0.7, sr); hissBP = SVF(3200, 0.8, sr); room = 0.25
-        case 19: hissBP = SVF(1800, 0.8, sr); rainLP = SVF(4200, 0.7, sr); lowLP = SVF(220, 0.8, sr); windBP = SVF(600, 1.2, sr); room = 0.2
+        case 19: hissBP = SVF(4500, 0.5, sr); rainLP = SVF(9000, 0.6, sr); lowLP = SVF(150, 0.7, sr); room = 0.12
         case 15: rainLP = SVF(2200, 0.6, sr); room = 0.22
         case 16: lowLP = SVF(170, 0.7, sr); hissBP = SVF(4000, 0.8, sr); room = 0.12
         default: break
@@ -384,15 +384,20 @@ final class ExtraSynth {
             let surf = lowLP.tick(brownStep()).lp * (0.25 + 0.75 * swell * swell) * 0.9
             mono = breeze + surf + hissBP.tick(pink(w)).bp * 0.04
         case 19:
-            // Leaves in a breeze: a rustle that swells and flutters with the gusts moving the tree, over
-            // a soft wind bed. It never drops to silence.
-            phB += 2 * Float.pi * (4.5 + 2 * slow) * inv; if phB > 2 * Float.pi { phB -= 2 * Float.pi }
-            phC += 2 * Float.pi * 0.7 * inv; if phC > 2 * Float.pi { phC -= 2 * Float.pi }
+            // Leaves: thousands of tiny papery flicks, not a wash. Short bright noise grains (2-5 ms,
+            // 2.5-8 kHz) at a rate that climbs steeply with the gust moving the tree, arriving in
+            // little clusters the way one leaf flicking sets off its neighbours. Almost nothing below
+            // 1 kHz, and only a trace of the far canopy's blur underneath.
             let g = sGust
-            let flutter = 0.6 + 0.4 * sinf(phB) * sinf(phC + slow2 * 5)
-            let rustle = rainLP.tick(hissBP.tick(pink(w)).bp).lp * (0.15 + 0.85 * g) * (0.75 + 0.25 * flutter) * 2.2
-            let bed = windBP.tick(pink(w)).bp * 0.25 * (0.3 + 0.7 * g) + lowLP.tick(brownStep()).lp * 0.2
-            mono = rustle + bed
+            phB += 2 * Float.pi * (6 + 6 * slow) * inv; if phB > 2 * Float.pi { phB -= 2 * Float.pi }
+            let cluster = 0.55 + 0.45 * sinf(phB) * sinf(phB * 0.37 + slow2 * 7)
+            let rate = (60 + 1300 * powf(g, 1.6)) * (0.6 + 0.8 * cluster)
+            if unit() < rate * inv {
+                let u = unit(), v = unit()
+                fire(1, tau: 0.002 + 0.004 * v, amp: 0.9 * u * u * (0.6 + 0.4 * g), attack: 0.0004,
+                     filtF: 2000 * powf(2, unit() * 1.5), filtQ: 0.7 + 0.6 * v, pan: unit() * 1.4 - 0.7)
+            }
+            mono = rainLP.tick(hissBP.tick(pink(w)).bp).lp * 0.03 * (0.3 + 0.7 * g) + lowLP.tick(brownStep()).lp * 0.06 * g
         default:
             mono = 0
         }

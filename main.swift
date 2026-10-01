@@ -578,7 +578,7 @@ final class NoiseState {
                         "Candle Flame · soft flutter", "Winter Hush · soft wind", "White Noise · even and bright",
                         "Gentle Rain · soft patter", "Fireplace · soft crackle",
                         "Clockwork · soft movement", "Evening Air · breeze and far surf", "Leaves · soft rustle"]
-    static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.83, 0.85, 0.36, 0.40, 0.36, 0.405, 0.61, 0.18, 0.21, 0.33]
+    static let norm: [Float] = [0, 0.63, 0.216, 0.39, 0.40, 1, 1, 1, 1, 0.40, 0.83, 0.85, 0.36, 0.40, 0.36, 0.405, 0.61, 0.18, 0.21, 0.32]
     static let liveKinds: Set<Int> = [5, 6, 8]
     static let hourglassKinds = [5, 6, 7, 8]
     /// Steady sounds for focus (nothing in them to pull attention), and textured ones better kept for breaks.
@@ -3124,6 +3124,7 @@ func soundDemo(_ path: String, kind: Int, seconds: Int = 16) {
             case 12: if tick == 3 { st.post(SoundEvent(kind: .light)) }; if tick == (seconds - 3) * 10 { st.post(SoundEvent(kind: .extinguish)); st.ex.inFlow = 0 }
                 st.ex.inGust = tick % 40 < 8 ? 0.8 : 0.1
             case 13: st.ex.inAir = 1 - t / Float(seconds); if tick == 5 { st.post(SoundEvent(kind: .swish)) }
+            case 19: st.ex.inGust = 0.5 + 0.5 * sinf(t * 0.5 - 1.2)
             default: break
             }
         }
